@@ -152,15 +152,12 @@ private extension TimerService {
     func washCycleCompleted(for pet: LaundryPet) {
         print("✅ Wash cycle completed for \(pet.name)")
         
-        // Update pet state to drying and start dry timer
+        // Update pet state to wet and ready for dryer - requires user action
         DispatchQueue.main.async {
-            pet.updateState(to: .drying)
-            
-            // Automatically start dry timer
-            self.startDryTimer(for: pet, duration: pet.dryTime)
+            pet.updateState(to: .wetReady) // User must manually move to dryer
         }
         
-        // Clean up
+        // Clean up wash timer
         activeTimers.removeValue(forKey: pet.id)
         removeTimerData(for: pet.id)
         
@@ -186,7 +183,7 @@ private extension TimerService {
 
 // MARK: - Background Persistence
 
-private extension TimerService {
+extension TimerService {
     
     struct TimerData: Codable {
         let petID: UUID
@@ -215,7 +212,7 @@ private extension TimerService {
         }
     }
     
-    func removeTimerData(for petID: UUID) {
+    private func removeTimerData(for petID: UUID) {
         var allTimerData = getAllTimerData()
         allTimerData.removeAll { $0.petID == petID }
         
@@ -224,11 +221,11 @@ private extension TimerService {
         }
     }
     
-    func getTimerData(for petID: UUID) -> TimerData? {
+    private func getTimerData(for petID: UUID) -> TimerData? {
         return getAllTimerData().first { $0.petID == petID }
     }
     
-    func getAllTimerData() -> [TimerData] {
+    private func getAllTimerData() -> [TimerData] {
         guard let data = UserDefaults.standard.data(forKey: timerDataKey),
               let timerData = try? JSONDecoder().decode([TimerData].self, from: data) else {
             return []
@@ -239,19 +236,19 @@ private extension TimerService {
 
 // MARK: - App Lifecycle Handling
 
-private extension TimerService {
+extension TimerService {
     
-    @objc func appWillEnterBackground() {
+    @objc private func appWillEnterBackground() {
         print("📱 App entering background - timers will continue via UserDefaults persistence")
         // Timers will be invalidated, but data is saved in UserDefaults
     }
     
-    @objc func appDidBecomeActive() {
+    @objc private func appDidBecomeActive() {
         print("📱 App became active - restoring timers")
         restoreTimersFromBackground()
     }
     
-    func restoreTimersFromBackground() {
+    private func restoreTimersFromBackground() {
         let allTimerData = getAllTimerData()
         
         for timerData in allTimerData {
@@ -270,7 +267,7 @@ private extension TimerService {
         }
     }
     
-    func handleExpiredTimer(_ timerData: TimerData) {
+    private func handleExpiredTimer(_ timerData: TimerData) {
         // Find the pet (this would need access to SwiftData context)
         // For now, just clean up the timer data
         removeTimerData(for: timerData.petID)
@@ -283,7 +280,7 @@ private extension TimerService {
         print("🔄 Cleaned up expired timer for pet: \(timerData.petID)")
     }
     
-    func recreateTimer(_ timerData: TimerData, remainingTime: TimeInterval) {
+    private func recreateTimer(_ timerData: TimerData, remainingTime: TimeInterval) {
         let timer = Timer.scheduledTimer(withTimeInterval: remainingTime, repeats: false) { [weak self] _ in
             switch timerData.type {
             case .wash:
@@ -305,7 +302,20 @@ private extension TimerService {
 
 extension TimerService {
     
-    /// Format remaining time as human-readable string
+    /// Get progress percentage for pet's active timer (0.0 to 1.0)
+    func getTimerProgress(for pet: LaundryPet) -> Double? {
+        guard let timerData = getTimerData(for: pet.id) else { return nil }
+        
+        let totalDuration = timerData.endTime.timeIntervalSince(timerData.startTime)
+        let elapsed = Date().timeIntervalSince(timerData.startTime)
+        
+        return min(1.0, max(0.0, elapsed / totalDuration))
+    }
+    
+    /// Get timer start time for display
+    func getTimerStartTime(for pet: LaundryPet) -> Date? {
+        return getTimerData(for: pet.id)?.startTime
+    }
     func formatRemainingTime(_ timeInterval: TimeInterval) -> String {
         let minutes = Int(timeInterval / 60)
         let seconds = Int(timeInterval.truncatingRemainder(dividingBy: 60))

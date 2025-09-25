@@ -1,5 +1,5 @@
 //
-//  PetCardView.swift
+//  PetCardView.swift (Enhanced with Timer Support)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -293,6 +293,8 @@ struct PetCardView: View {
             }
         case .washing:
             return "Having a bubbly good time! 🫧"
+        case .wetReady:
+            return "All clean but soaking wet! Move me to the dryer! 💧"
         case .drying:
             return "Getting nice and dry 🌪️"
         case .readyToFold:
@@ -349,8 +351,13 @@ struct PetCardView: View {
         switch pet.currentState {
         case .dirty:
             nextState = .washing
-            // Start wash timer
-            timerService.startWashTimer(for: pet, duration: pet.washTime)
+            // Start wash timer with SHORT duration for testing
+            timerService.startWashTimer(for: pet, duration: 10) // 10 seconds instead of 45 minutes
+            
+        case .wetReady:
+            nextState = .drying
+            // Start dry timer when user moves clothes to dryer
+            timerService.startDryTimer(for: pet, duration: 15) // 15 seconds instead of 60 minutes
             
         case .readyToFold:
             nextState = .folded
@@ -430,6 +437,7 @@ struct StatusBadgeView: View {
         case .clean: return .green.opacity(0.2)
         case .dirty: return .orange.opacity(0.2)
         case .washing, .drying: return .blue.opacity(0.2)
+        case .wetReady: return .cyan.opacity(0.2)
         case .readyToFold, .folded: return .purple.opacity(0.2)
         case .abandoned: return .red.opacity(0.2)
         }
@@ -440,6 +448,7 @@ struct StatusBadgeView: View {
         case .clean: return .green
         case .dirty: return .orange
         case .washing, .drying: return .blue
+        case .wetReady: return .cyan
         case .readyToFold, .folded: return .purple
         case .abandoned: return .red
         }
@@ -496,15 +505,14 @@ struct ActiveTimerView: View {
     }
     
     private var startTimeText: String {
-        // This would need access to when the timer started
-        // For now, just show a placeholder
+        if let startTime = TimerService.shared.getTimerStartTime(for: pet) {
+            return startTime.formatted(.dateTime.hour().minute())
+        }
         return "recently"
     }
     
     private var progressValue: Double {
-        // This would need the total timer duration to calculate progress
-        // For now, return a placeholder
-        return 0.7 // 70% complete
+        return TimerService.shared.getTimerProgress(for: pet) ?? 0.0
     }
     
     private func colorForPetType(_ type: PetType) -> Color {

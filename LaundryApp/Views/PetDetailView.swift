@@ -1,5 +1,5 @@
 //
-//  PetDetailView.swift
+//  PetDetailView.swift (Updated with Timer Support)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -8,18 +8,24 @@
 import SwiftUI
 import SwiftData
 
-/// Detailed view for individual pet with actions and personality
+/// Detailed view for individual pet with actions, personality, and timer support
 struct PetDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
     @Bindable var pet: LaundryPet
     
+    // Timer service integration
+    private let timerService = TimerService.shared
+    @State private var remainingTime: TimeInterval? = nil
+    @State private var timer: Timer?
+    @State private var animationScale: CGFloat = 1.0
+    
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Pet Avatar Section (placeholder for animations later)
+                    // Pet Avatar Section
                     VStack(spacing: 16) {
                         ZStack {
                             Circle()
@@ -40,6 +46,71 @@ struct PetDetailView: View {
                             .font(.largeTitle)
                             .fontWeight(.bold)
                             .foregroundColor(colorForPetType)
+                        
+                        // Timer status if active
+                        if let remaining = remainingTime, remaining > 0 {
+                            HStack(spacing: 4) {
+                                Image(systemName: "timer")
+                                    .font(.caption)
+                                Text(timerService.getTimerType(for: pet) ?? "Timer")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(colorForPetType)
+                        }
+                    }
+                    
+                    // Active Timer Display (if running)
+                    if let remaining = remainingTime, remaining > 0 {
+                        VStack(spacing: 12) {
+                            Text("Timer Active")
+                                .font(.headline)
+                                .foregroundColor(colorForPetType)
+                            
+                            VStack(spacing: 8) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(timerService.getTimerType(for: pet) ?? "Timer")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(timerService.formatRemainingTime(remaining))
+                                            .font(.title2)
+                                            .fontWeight(.bold)
+                                            .monospacedDigit()
+                                            .foregroundColor(colorForPetType)
+                                        
+                                        Text("remaining")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                
+                                // Progress bar
+                                ProgressView(value: timerService.getTimerProgress(for: pet) ?? 0.0)
+                                    .progressViewStyle(LinearProgressViewStyle(tint: colorForPetType))
+                                    .scaleEffect(y: 1.2)
+                                
+                                // Cancel button
+                                Button("Cancel Timer") {
+                                    cancelTimer()
+                                }
+                                .font(.subheadline)
+                                .foregroundColor(.red)
+                                .padding(.top, 4)
+                            }
+                            .padding(16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(colorForPetType.opacity(0.1))
+                                    .stroke(colorForPetType.opacity(0.3), lineWidth: 2)
+                            )
+                        }
+                        .padding(.horizontal)
                     }
                     
                     // Pet Speech Bubble
@@ -124,7 +195,7 @@ struct PetDetailView: View {
                     
                     // Action Buttons Section
                     VStack(spacing: 12) {
-                        if let primaryAction = primaryActionForCurrentState {
+                        if let primaryAction = primaryActionForCurrentState, !timerService.hasActiveTimer(for: pet) {
                             Button(action: { performPrimaryAction() }) {
                                 HStack {
                                     Text(primaryAction.emoji)
@@ -190,17 +261,6 @@ struct PetDetailView: View {
                     }
                 }
                 .padding(.bottom, 20)
-                
-                // Add this to the body of PetDetailView, after the main VStack
-                .onAppear {
-                    // Debug timer status
-                    print("🐾 \(pet.name) - State: \(pet.currentState)")
-                    print("⏰ Has active timer: \(TimerService.shared.hasActiveTimer(for: pet))")
-                    if let remaining = TimerService.shared.getRemainingTime(for: pet) {
-                        print("⏱️ Time remaining: \(Int(remaining)) seconds")
-                    }
-                }
-                
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -219,11 +279,48 @@ struct PetDetailView: View {
             }
         }
         .navigationBarHidden(true)
+        .onAppear {
+            startTimerUpdates()
+            // Debug timer status
+            print("🐾 \(pet.name) - State: \(pet.currentState)")
+            print("⏰ Has active timer: \(TimerService.shared.hasActiveTimer(for: pet))")
+            if let remaining = TimerService.shared.getRemainingTime(for: pet) {
+                print("⏱️ Time remaining: \(Int(remaining)) seconds")
+            }
+        }
+        .onDisappear {
+            stopTimerUpdates()
+        }
     }
     
-    // MARK: - State Properties
+    // MARK: - Timer Management
     
-    @State private var animationScale: CGFloat = 1.0
+    private func startTimerUpdates() {
+        updateRemainingTime()
+        
+        // Update every second if there's an active timer
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            updateRemainingTime()
+        }
+    }
+    
+    private func stopTimerUpdates() {
+        timer?.invalidate()
+        timer = nil
+    }
+    
+    private func updateRemainingTime() {
+        remainingTime = timerService.getRemainingTime(for: pet)
+    }
+    
+    private func cancelTimer() {
+        timerService.cancelTimer(for: pet)
+        updateRemainingTime()
+        
+        // Haptic feedback
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
+    }
     
     // MARK: - Computed Properties
     
@@ -279,6 +376,8 @@ struct PetDetailView: View {
         switch pet.currentState {
         case .dirty:
             return PetAction(text: "Start Wash Cycle", emoji: "🫧", action: .washing)
+        case .wetReady:
+            return PetAction(text: "Move to Dryer", emoji: "🌪️", action: .drying)
         case .readyToFold:
             return PetAction(text: "Fold Me!", emoji: "📚", action: .folded)
         case .folded:
@@ -301,22 +400,23 @@ struct PetDetailView: View {
     
     // MARK: - Actions
     
-    // private func performPrimaryAction() {
-        // guard let action = primaryActionForCurrentState else { return }
-        
     private func performPrimaryAction() {
         guard primaryActionForCurrentState != nil else { return }
         
         switch pet.currentState {
         case .dirty:
-            // Start wash cycle with timer
+            // Start wash cycle with SHORT timer for testing
             withAnimation(.easeInOut(duration: 0.3)) {
                 pet.updateState(to: .washing, context: modelContext)
             }
+            timerService.startWashTimer(for: pet, duration: 10) // 10 seconds for testing
             
-            // Start the actual timer
-            // TimerService.shared.startWashTimer(for: pet, duration: pet.washTime)
-            TimerService.shared.startWashTimer(for: pet, duration: 30) // 30 seconds for testing
+        case .wetReady:
+            // Start dry cycle when user moves to dryer
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .drying, context: modelContext)
+            }
+            timerService.startDryTimer(for: pet, duration: 15) // 15 seconds for testing
             
         case .readyToFold:
             withAnimation(.easeInOut(duration: 0.3)) {
@@ -400,6 +500,13 @@ struct PetPersonality {
                 "Getting squeaky clean! 🫧"
             ]
             
+        case (.clothes, .wetReady):
+            return [
+                "All clean but soaking wet! Move me to the dryer! 💧",
+                "I need to get dry or I'll get wrinkly! 😰",
+                "Fresh from the wash, ready for some heat! 🌪️"
+            ]
+            
         case (.clothes, .readyToFold):
             return [
                 "I'm all done drying! Time to fold me up! 📚",
@@ -421,6 +528,13 @@ struct PetPersonality {
                 "Time for my spa day? 🛁"
             ]
             
+        case (.sheets, .wetReady):
+            return [
+                "All clean and sleepy... time for the dryer! 💤",
+                "Gently move me to the dryer please! 🤗",
+                "I'm wet but ready for my warm dryer nap! 😴"
+            ]
+            
         case (.towels, .clean):
             return [
                 "Fluffy and ready to help! 🤗",
@@ -433,6 +547,13 @@ struct PetPersonality {
                 "I'm not as absorbent as I used to be... 😔",
                 "Could really use a refresh! 💦",
                 "Help! I'm developing my own ecosystem! 🦠"
+            ]
+            
+        case (.towels, .wetReady):
+            return [
+                "Clean and ready to get fluffy in the dryer! 🧺",
+                "Move me to the dryer so I can be super absorbent! 💪",
+                "Fresh from the wash, ready to dry! 🌊"
             ]
             
         case (_, .abandoned):

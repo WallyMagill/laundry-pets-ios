@@ -12,6 +12,7 @@ enum PetState: String, CaseIterable, Codable, Sendable {
     case clean = "clean"
     case dirty = "dirty"
     case washing = "washing"
+    case wetReady = "wet_ready"      // NEW: Wet and ready to move to dryer
     case drying = "drying"
     case readyToFold = "ready_to_fold"
     case folded = "folded"
@@ -23,6 +24,7 @@ enum PetState: String, CaseIterable, Codable, Sendable {
         case .clean: return "Clean & Happy"
         case .dirty: return "Getting Dirty"
         case .washing: return "Washing"
+        case .wetReady: return "Ready for Dryer"
         case .drying: return "Drying"
         case .readyToFold: return "Ready to Fold"
         case .folded: return "Folded"
@@ -34,7 +36,7 @@ enum PetState: String, CaseIterable, Codable, Sendable {
     var requiresAction: Bool {
         switch self {
         case .clean, .washing, .drying: return false
-        case .dirty, .readyToFold, .folded, .abandoned: return true
+        case .dirty, .wetReady, .readyToFold, .folded, .abandoned: return true
         }
     }
     
@@ -42,6 +44,7 @@ enum PetState: String, CaseIterable, Codable, Sendable {
     var primaryActionText: String? {
         switch self {
         case .dirty: return "Start Wash"
+        case .wetReady: return "Move to Dryer"
         case .readyToFold: return "Fold Me!"
         case .folded: return "Put Away"
         case .abandoned: return "Rescue Me!"
@@ -55,6 +58,7 @@ enum PetState: String, CaseIterable, Codable, Sendable {
         case .clean: return "✨"
         case .dirty: return "🫤"
         case .washing: return "🫧"
+        case .wetReady: return "💧"
         case .drying: return "🌪️"
         case .readyToFold: return "📦"
         case .folded: return "📚"

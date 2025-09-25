@@ -118,7 +118,7 @@ final class LaundryPet {
     }
 }
 
-// Add computed properties for easier access
+// In LaundryPet.swift, find this extension and ADD the new case:
 extension PetState {
     /// Pet's mood/happiness level for this state
     var happinessLevel: Int {
@@ -126,7 +126,8 @@ extension PetState {
         case .clean: return 100
         case .dirty: return 60
         case .washing: return 80 // Happy to be getting clean
-        case .drying: return 70
+        case .wetReady: return 70 // ADD THIS LINE - Clean but waiting
+        case .drying: return 75
         case .readyToFold: return 50 // Waiting patiently
         case .folded: return 90 // Almost back to clean
         case .abandoned: return 10 // Very unhappy

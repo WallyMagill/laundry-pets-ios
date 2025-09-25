@@ -75,7 +75,6 @@ extension NotificationService {
         content.badge = NSNumber(value: await getBadgeCount() + 1)
         content.categoryIdentifier = "DRYER_REMINDER"
         
-        // Add custom data
         content.userInfo = [
             "petID": pet.id.uuidString,
             "actionType": "move_to_dryer",
