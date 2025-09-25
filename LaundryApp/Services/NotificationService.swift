@@ -413,22 +413,19 @@ extension NotificationService {
         case "MOVE_TO_DRYER":
             // Pet should be moved from washing to drying state
             // This would need to be handled by the main app with SwiftData access
-            break
+            print("🔔 User tapped: Move to dryer for pet \(petID)")
             
         case "MARK_FOLDED":
             // Pet should be moved from readyToFold to folded state
-            break
+            print("🔔 User tapped: Mark folded for pet \(petID)")
             
         case "START_WASH":
             // Pet should be moved from dirty to washing state
-            break
+            print("🔔 User tapped: Start wash for pet \(petID)")
             
         case "SNOOZE":
             // Re-schedule notification for 15 minutes later
-            Task {
-                // Would need pet reference to re-schedule
-                print("⏰ Snoozing notification for 15 minutes")
-            }
+            print("🔔 User tapped: Snooze for pet \(petID)")
             
         default:
             print("🤷‍♂️ Unknown notification action: \(identifier)")

@@ -213,9 +213,57 @@ struct ContentView: View {
             print("❌ Error creating default pets: \(error)")
         }
     }
+    
+    private func createDefaultPets() {
+        print("🐾 Creating default pets...")
+        
+        let clothesBuddy = LaundryPet(type: .clothes)
+        let sheetSpirit = LaundryPet(type: .sheets)
+        let towelPal = LaundryPet(type: .towels)
+        
+        // Better test states - make them actionable
+        clothesBuddy.updateState(to: .dirty, context: modelContext)     // Can start wash
+        sheetSpirit.updateState(to: .dirty, context: modelContext)      // Can start wash
+        towelPal.updateState(to: .readyToFold, context: modelContext)   // Can fold
+        
+        modelContext.insert(clothesBuddy)
+        modelContext.insert(sheetSpirit)
+        modelContext.insert(towelPal)
+        
+        do {
+            try modelContext.save()
+            print("✨ Default pets created successfully!")
+        } catch {
+            print("❌ Error creating default pets: \(error)")
+        }
+    }
 }
 
 #Preview {
     ContentView()
         .modelContainer(for: [LaundryPet.self, LaundryLog.self], inMemory: true)
+}
+
+// Add this at the end of ContentView, just before the final }
+.onLongPressGesture {
+    // Long press anywhere to reset pets for testing
+    for pet in pets {
+        switch pet.type {
+        case .clothes:
+            pet.currentState = .dirty
+        case .sheets:
+            pet.currentState = .dirty
+        case .towels:
+            pet.currentState = .readyToFold
+        }
+        pet.happinessLevel = pet.currentState.happinessLevel
+        pet.lastStateChange = Date()
+    }
+    
+    do {
+        try modelContext.save()
+        print("🔄 Reset pets for testing!")
+    } catch {
+        print("❌ Error resetting pets: \(error)")
+    }
 }

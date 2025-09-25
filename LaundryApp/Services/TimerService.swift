@@ -140,8 +140,8 @@ extension TimerService {
     }
     
     /// Get all active timer data for UI display
-    func getActiveTimerData() -> [TimerData] {
-        return getAllTimerData().filter { $0.endTime > Date() }
+    func getActiveTimerData() -> [String] {
+        return getAllTimerData().filter { $0.endTime > Date() }.map { $0.petID.uuidString }
     }
 }
 

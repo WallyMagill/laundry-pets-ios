@@ -190,6 +190,17 @@ struct PetDetailView: View {
                     }
                 }
                 .padding(.bottom, 20)
+                
+                // Add this to the body of PetDetailView, after the main VStack
+                .onAppear {
+                    // Debug timer status
+                    print("🐾 \(pet.name) - State: \(pet.currentState)")
+                    print("⏰ Has active timer: \(TimerService.shared.hasActiveTimer(for: pet))")
+                    if let remaining = TimerService.shared.getRemainingTime(for: pet) {
+                        print("⏱️ Time remaining: \(Int(remaining)) seconds")
+                    }
+                }
+                
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -290,8 +301,11 @@ struct PetDetailView: View {
     
     // MARK: - Actions
     
+    // private func performPrimaryAction() {
+        // guard let action = primaryActionForCurrentState else { return }
+        
     private func performPrimaryAction() {
-        guard let action = primaryActionForCurrentState else { return }
+        guard primaryActionForCurrentState != nil else { return }
         
         switch pet.currentState {
         case .dirty:
@@ -301,7 +315,8 @@ struct PetDetailView: View {
             }
             
             // Start the actual timer
-            TimerService.shared.startWashTimer(for: pet, duration: pet.washTime)
+            // TimerService.shared.startWashTimer(for: pet, duration: pet.washTime)
+            TimerService.shared.startWashTimer(for: pet, duration: 30) // 30 seconds for testing
             
         case .readyToFold:
             withAnimation(.easeInOut(duration: 0.3)) {
