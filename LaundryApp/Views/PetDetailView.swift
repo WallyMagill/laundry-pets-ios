@@ -1,5 +1,5 @@
 //
-//  PetDetailView.swift (Updated with Timer Support)
+//  PetDetailView.swift (Fixed Compilation Errors)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -150,7 +150,7 @@ struct PetDetailView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                 
-                                HappinessIndicator(level: pet.currentHappiness)
+                                HappinessIndicator(pet: pet)
                             }
                         }
                         
@@ -271,7 +271,7 @@ struct PetDetailView: View {
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {}) {
+                    NavigationLink(destination: PetSettingsView(pet: pet)) {
                         Image(systemName: "gearshape")
                     }
                     .foregroundColor(colorForPetType)
@@ -281,12 +281,6 @@ struct PetDetailView: View {
         .navigationBarHidden(true)
         .onAppear {
             startTimerUpdates()
-            // Debug timer status
-            print("🐾 \(pet.name) - State: \(pet.currentState)")
-            print("⏰ Has active timer: \(TimerService.shared.hasActiveTimer(for: pet))")
-            if let remaining = TimerService.shared.getRemainingTime(for: pet) {
-                print("⏱️ Time remaining: \(Int(remaining)) seconds")
-            }
         }
         .onDisappear {
             stopTimerUpdates()
@@ -349,14 +343,14 @@ struct PetDetailView: View {
         let timeUntil = pet.timeUntilDirty
         
         if timeUntil < 0 {
-            let overdue = Int(abs(timeUntil) / 3600)
-            return "Overdue by \(overdue) hours!"
-        } else if timeUntil < 86400 {
-            let hours = Int(timeUntil / 3600)
-            return hours == 0 ? "Now!" : "In \(hours) hours"
+            let overdue = Int(abs(timeUntil) / 60) // Show in minutes now
+            return "Overdue by \(overdue) min!"
+        } else if timeUntil < 3600 {
+            let minutes = Int(timeUntil / 60)
+            return minutes == 0 ? "Now!" : "In \(minutes) min"
         } else {
-            let days = Int(timeUntil / 86400)
-            return "In \(days) days"
+            let hours = Int(timeUntil / 3600)
+            return "In \(hours) hours"
         }
     }
     
@@ -409,7 +403,7 @@ struct PetDetailView: View {
             withAnimation(.easeInOut(duration: 0.3)) {
                 pet.updateState(to: .washing, context: modelContext)
             }
-            timerService.startWashTimer(for: pet, duration: 10) // 10 seconds for testing
+            timerService.startWashTimer(for: pet, duration: 15) // 15 seconds for testing
             
         case .wetReady:
             // Start dry cycle when user moves to dryer
@@ -459,9 +453,12 @@ struct PetDetailView: View {
     private func timeAgoString(from date: Date) -> String {
         let interval = Date().timeIntervalSince(date)
         
-        if interval < 86400 {
+        if interval < 3600 {
+            let minutes = Int(interval / 60)
+            return minutes == 0 ? "Just now" : "\(minutes) min ago"
+        } else if interval < 86400 {
             let hours = Int(interval / 3600)
-            return hours == 0 ? "Today" : "\(hours) hours ago"
+            return "\(hours) hours ago"
         } else {
             let days = Int(interval / 86400)
             return "\(days) days ago"

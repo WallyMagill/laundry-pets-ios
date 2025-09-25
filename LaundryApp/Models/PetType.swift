@@ -1,5 +1,5 @@
 //
-//  PetType.swift (Updated with Testing Durations)
+//  PetType.swift (Updated with 5-Minute Testing Duration)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -10,14 +10,15 @@ import Foundation
 /**
  * PET TYPE ENUMERATION
  *
- * Updated with SHORT durations for testing purposes.
- * These can easily be changed back to realistic times later.
+ * Updated with 5-MINUTE cycles for testing.
+ * All pets get dirty in 5 minutes, wash/dry in 15 seconds.
  *
  * TESTING DURATIONS:
- * - Wash/Dry cycles: 15 seconds (instead of 45-60 minutes)
- * - Time until dirty: 5-10 minutes (instead of days)
+ * - Time until dirty: 5 minutes (300 seconds)
+ * - Wash cycle: 15 seconds
+ * - Dry cycle: 15 seconds
  *
- * This allows rapid testing of the complete laundry cycle.
+ * This allows complete testing of the happiness system.
  */
 
 enum PetType: String, CaseIterable, Codable, Sendable {
@@ -34,19 +35,12 @@ enum PetType: String, CaseIterable, Codable, Sendable {
     }
     
     /**
-     * TESTING FREQUENCIES (SHORT DURATIONS)
+     * TESTING FREQUENCY - ALL PETS GET DIRTY IN 5 MINUTES
      *
-     * How often each pet gets dirty - shortened for testing:
-     * - Clothes: 5 minutes (instead of 5 days)
-     * - Sheets: 10 minutes (instead of 14 days)
-     * - Towels: 7 minutes (instead of 7 days)
+     * This allows rapid testing of the happiness decay system
      */
     var defaultFrequency: TimeInterval {
-        switch self {
-        case .clothes: return 300   // 5 minutes (300 seconds)
-        case .sheets: return 600    // 10 minutes (600 seconds)
-        case .towels: return 420    // 7 minutes (420 seconds)
-        }
+        return 300 // 5 minutes (300 seconds) for all pets
     }
     
     /**
@@ -81,21 +75,17 @@ enum PetType: String, CaseIterable, Codable, Sendable {
     }
     
     /**
-     * TESTING WASH TIME (SHORT DURATION)
-     *
-     * 15 seconds instead of 45 minutes for rapid testing
+     * TESTING WASH TIME - 15 SECONDS
      */
     var defaultWashTime: TimeInterval {
-        return 15  // 15 seconds (instead of 2700 = 45 minutes)
+        return 15  // 15 seconds for rapid testing
     }
     
     /**
-     * TESTING DRY TIME (SHORT DURATION)
-     *
-     * 15 seconds instead of 60 minutes for rapid testing
+     * TESTING DRY TIME - 15 SECONDS
      */
     var defaultDryTime: TimeInterval {
-        return 15  // 15 seconds (instead of 3600 = 60 minutes)
+        return 15  // 15 seconds for rapid testing
     }
     
     /**

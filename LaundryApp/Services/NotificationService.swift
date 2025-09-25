@@ -1,5 +1,5 @@
 //
-//  NotificationService.swift
+//  NotificationService.swift (Fixed)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -94,7 +94,7 @@ extension NotificationService {
         
         do {
             try await notificationCenter.add(request)
-            print("📅 Scheduled dryer reminder for \(pet.name) in \(Int(timeInterval/60)) minutes")
+            print("📅 Scheduled dryer reminder for \(pet.name) in \(Int(timeInterval)) seconds")
         } catch {
             print("❌ Failed to schedule dryer reminder: \(error)")
         }
@@ -134,7 +134,7 @@ extension NotificationService {
         
         do {
             try await notificationCenter.add(request)
-            print("📅 Scheduled fold reminder for \(pet.name) in \(Int(timeInterval/60)) minutes")
+            print("📅 Scheduled fold reminder for \(pet.name) in \(Int(timeInterval)) seconds")
         } catch {
             print("❌ Failed to schedule fold reminder: \(error)")
         }
@@ -411,7 +411,6 @@ extension NotificationService {
         switch identifier {
         case "MOVE_TO_DRYER":
             // Pet should be moved from washing to drying state
-            // This would need to be handled by the main app with SwiftData access
             print("🔔 User tapped: Move to dryer for pet \(petID)")
             
         case "MARK_FOLDED":

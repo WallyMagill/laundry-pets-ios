@@ -1,5 +1,5 @@
 //
-//  LaundryPet.swift (Updated with Time-Based Happiness)
+//  LaundryPet.swift (Updated for 5-Minute Happiness System)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -31,12 +31,12 @@ final class LaundryPet {
         self.type = type
         self.name = name ?? type.displayName
         self.currentState = .clean
-        // Start pets closer to needing attention for testing
-        self.lastWashDate = Date().addingTimeInterval(-type.defaultFrequency * 0.8)
-        self.washFrequency = type.defaultFrequency
-        self.washTime = type.defaultWashTime
-        self.dryTime = type.defaultDryTime
-        self.happinessLevel = 100  // Will be calculated dynamically
+        // START AT FULL HAPPINESS - just washed
+        self.lastWashDate = Date()
+        self.washFrequency = type.defaultFrequency // 5 minutes for all pets
+        self.washTime = type.defaultWashTime // 15 seconds
+        self.dryTime = type.defaultDryTime // 15 seconds
+        self.happinessLevel = 100  // Start at full happiness
         self.streakCount = 0
         self.isActive = true
         self.createdDate = Date()
@@ -46,55 +46,48 @@ final class LaundryPet {
     /**
      * DYNAMIC HAPPINESS CALCULATION
      *
-     * Calculates happiness based on:
-     * 1. Current state (washing, drying are positive)
-     * 2. Time since last wash (gets unhappier as it gets dirtier)
-     * 3. Whether pet is overdue for washing
-     *
-     * HAPPINESS SYSTEM:
-     * - Clean & Fresh: 100 hearts (5/5)
-     * - Getting dirty: 80-60 hearts (4/5 - 3/5)
-     * - Dirty: 40-20 hearts (2/5 - 1/5)
-     * - Overdue: 0 hearts (0/5 - dead!)
-     * - Washing/Drying: Slowly recovering (animated)
+     * 5-MINUTE HAPPINESS SYSTEM:
+     * - Clean: 100 happiness (5 hearts)
+     * - Washing: Always 2 hearts (shaking)
+     * - Drying: Always 3 hearts (shaking)
+     * - Folded: Always 4 hearts
+     * - Time-based decay: 100 → 0 over 5 minutes
+     * - Overdue: 0 happiness (dead hearts)
      */
     var currentHappiness: Int {
-        // Base happiness on current state
-        let baseHappiness = currentState.baseHappiness
-        
-        // Calculate time-based happiness decay
-        let timeFactor = calculateTimeFactor()
-        
-        // Combine base happiness with time factor
-        let calculatedHappiness = Int(Double(baseHappiness) * timeFactor)
-        
-        // Clamp between 0 and 100
-        return max(0, min(100, calculatedHappiness))
-    }
-    
-    /**
-     * CALCULATE TIME FACTOR
-     *
-     * Returns a multiplier (0.0 to 1.0) based on time since last wash:
-     * - 1.0: Just washed (full happiness)
-     * - 0.5: Halfway to next wash (reduced happiness)
-     * - 0.0: Overdue for wash (no happiness)
-     */
-    private func calculateTimeFactor() -> Double {
-        // Special cases for active wash/dry cycles
+        // Fixed happiness for specific states
         switch currentState {
-        case .washing, .drying:
-            // During wash/dry, slowly recover happiness
-            return 0.8 // 80% happiness during cleaning process
-            
         case .clean:
-            return 1.0 // Full happiness when clean
-            
+            return 100 // Always full when clean
+        case .washing:
+            return 40 // Always 2 hearts during wash (40/100 = 2/5)
+        case .drying:
+            return 60 // Always 3 hearts during dry (60/100 = 3/5)
+        case .folded:
+            return 80 // Always 4 hearts when folded (80/100 = 4/5)
+        case .wetReady, .readyToFold:
+            return 60 // Intermediate states get 3 hearts
         default:
             break
         }
         
-        // Calculate based on time since last wash
+        // Time-based happiness for dirty/abandoned states
+        let timeFactor = calculateTimeFactor()
+        return max(0, min(100, Int(100.0 * timeFactor)))
+    }
+    
+    /**
+     * CALCULATE TIME FACTOR FOR DIRTY PETS
+     *
+     * Returns happiness multiplier based on time since last wash:
+     * - 0 minutes: 1.0 (100% happiness - 5 hearts)
+     * - 1 minute: 0.8 (80% happiness - 4 hearts)
+     * - 2 minutes: 0.6 (60% happiness - 3 hearts)
+     * - 3 minutes: 0.4 (40% happiness - 2 hearts)
+     * - 4 minutes: 0.2 (20% happiness - 1 heart)
+     * - 5+ minutes: 0.0 (0% happiness - 0 hearts, dead!)
+     */
+    private func calculateTimeFactor() -> Double {
         let timeSinceWash = Date().timeIntervalSince(lastWashDate)
         let timeUntilDirty = washFrequency - timeSinceWash
         
@@ -103,9 +96,9 @@ final class LaundryPet {
             return 0.0
         }
         
-        // Linear decay from 1.0 (just washed) to 0.2 (almost dirty)
+        // Linear decay over 5 minutes: 1.0 → 0.0
         let progress = timeSinceWash / washFrequency
-        return max(0.2, 1.0 - (progress * 0.8)) // Never goes below 0.2 until overdue
+        return max(0.0, 1.0 - progress)
     }
     
     var timeUntilDirty: TimeInterval {
@@ -147,7 +140,7 @@ final class LaundryPet {
         // Track completed cycles for streak counting
         if oldState == .folded && newState == .clean {
             streakCount += 1
-            lastWashDate = Date() // Reset the wash timer
+            lastWashDate = Date() // Reset the wash timer to full 5 minutes
         }
         
         // Create activity log
@@ -196,13 +189,13 @@ extension PetState {
      */
     var baseHappiness: Int {
         switch self {
-        case .clean: return 100       // Perfect when just cleaned
+        case .clean: return 100       // Perfect when just cleaned (5 hearts)
         case .dirty: return 60        // Base dirty happiness (modified by time)
-        case .washing: return 85      // Happy to be getting clean
-        case .wetReady: return 75     // Clean but impatient
-        case .drying: return 90       // Almost back to perfect
-        case .readyToFold: return 70  // Clean but waiting
-        case .folded: return 95       // Almost done!
+        case .washing: return 40      // Happy to be getting clean (2 hearts)
+        case .wetReady: return 60     // Clean but impatient (3 hearts)
+        case .drying: return 60       // Almost back to perfect (3 hearts)
+        case .readyToFold: return 60  // Clean but waiting (3 hearts)
+        case .folded: return 80       // Almost done! (4 hearts)
         case .abandoned: return 5     // Very sad, needs rescue
         }
     }

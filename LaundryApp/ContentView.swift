@@ -1,5 +1,5 @@
 //
-//  ContentView.swift (Fixed Quick Actions)
+//  ContentView.swift (Fixed - No Long Press, All Quick Actions)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -89,36 +89,48 @@ struct ContentView: View {
                 }
                 .background(Color(.systemGroupedBackground))
                 
-                // FIXED QUICK ACTION BAR
+                // FIXED QUICK ACTION BAR - SHOWS ALL ACTIONS
                 if petsNeedingAttention > 0 {
                     VStack {
                         Divider()
                         
-                        HStack {
+                        VStack(spacing: 12) {
                             Text("Quick Actions:")
                                 .font(.subheadline)
                                 .fontWeight(.medium)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             
-                            Spacer()
-                            
-                            // Show quick action buttons for ALL pets needing attention
-                            ForEach(petsRequiringAction, id: \.id) { pet in
-                                Button(action: { performQuickAction(for: pet) }) {
-                                    HStack(spacing: 4) {
-                                        Text(pet.type.emoji)
-                                        Text(quickActionText(for: pet))
-                                            .font(.caption)
-                                            .fontWeight(.semibold)
+                            // SCROLLABLE HORIZONTAL STACK FOR ALL QUICK ACTIONS
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(petsRequiringAction, id: \.id) { pet in
+                                        Button(action: { performQuickAction(for: pet) }) {
+                                            VStack(spacing: 6) {
+                                                Text(pet.type.emoji)
+                                                    .font(.title2)
+                                                
+                                                Text(pet.name)
+                                                    .font(.caption2)
+                                                    .fontWeight(.medium)
+                                                    .lineLimit(1)
+                                                
+                                                Text(quickActionText(for: pet))
+                                                    .font(.caption)
+                                                    .fontWeight(.semibold)
+                                                    .lineLimit(1)
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 12)
+                                            .frame(minWidth: 80)
+                                            .background(colorForPetType(pet.type))
+                                            .foregroundColor(.white)
+                                            .cornerRadius(16)
+                                        }
                                     }
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(colorForPetType(pet.type))
-                                    .foregroundColor(.white)
-                                    .cornerRadius(16)
                                 }
+                                .padding(.horizontal, 20)
                             }
                         }
-                        .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                     }
                     .background(Color(.systemBackground))
@@ -132,9 +144,7 @@ struct ContentView: View {
                 createDefaultPets()
             }
         }
-        .onLongPressGesture {
-            resetPetsForTesting()
-        }
+        // REMOVED: Long press gesture
     }
     
     // MARK: - Computed Properties
@@ -168,7 +178,7 @@ struct ContentView: View {
     }
     
     /**
-     * FIXED QUICK ACTION TEXT
+     * QUICK ACTION TEXT
      *
      * Returns appropriate action text for each pet state
      */
@@ -184,7 +194,7 @@ struct ContentView: View {
     }
     
     /**
-     * FIXED QUICK ACTION PERFORMER
+     * QUICK ACTION PERFORMER
      *
      * Handles ALL pet states and integrates with TimerService properly
      */
@@ -232,17 +242,28 @@ struct ContentView: View {
         print("✅ Quick action completed for \(pet.name)")
     }
     
+    /**
+     * CREATE DEFAULT PETS
+     *
+     * All pets start at FULL HAPPINESS (5 hearts)
+     * Time until dirty: 5 minutes for all pets
+     */
     private func createDefaultPets() {
-        print("🐾 Creating default pets with testing durations...")
+        print("🐾 Creating default pets - all starting at full happiness...")
         
         let clothesBuddy = LaundryPet(type: .clothes)
         let sheetSpirit = LaundryPet(type: .sheets)
         let towelPal = LaundryPet(type: .towels)
         
-        // Set different states for testing
-        clothesBuddy.updateState(to: .dirty, context: modelContext)
-        sheetSpirit.updateState(to: .readyToFold, context: modelContext)
-        towelPal.updateState(to: .dirty, context: modelContext)
+        // ALL PETS START CLEAN AND HAPPY
+        clothesBuddy.updateState(to: .clean, context: modelContext)
+        sheetSpirit.updateState(to: .clean, context: modelContext)
+        towelPal.updateState(to: .clean, context: modelContext)
+        
+        // Set last wash to now so they have full 5 minutes before getting dirty
+        clothesBuddy.lastWashDate = Date()
+        sheetSpirit.lastWashDate = Date()
+        towelPal.lastWashDate = Date()
         
         modelContext.insert(clothesBuddy)
         modelContext.insert(sheetSpirit)
@@ -250,40 +271,9 @@ struct ContentView: View {
         
         do {
             try modelContext.save()
-            print("✨ Default pets created successfully!")
+            print("✨ Default pets created - all at full happiness for 5 minutes!")
         } catch {
             print("❌ Error creating default pets: \(error)")
-        }
-    }
-    
-    private func resetPetsForTesting() {
-        print("🔄 Resetting pets for testing...")
-        
-        for pet in pets {
-            TimerService.shared.cancelTimer(for: pet)
-            
-            // Reset to different states for comprehensive testing
-            switch pet.type {
-            case .clothes:
-                pet.currentState = .dirty
-            case .sheets:
-                pet.currentState = .readyToFold
-            case .towels:
-                pet.currentState = .folded
-            }
-            
-            pet.happinessLevel = pet.currentHappiness
-            pet.lastStateChange = Date()
-            
-            // Reset wash date for testing happiness decay
-            pet.lastWashDate = Date().addingTimeInterval(-pet.washFrequency * 0.9) // Almost overdue
-        }
-        
-        do {
-            try modelContext.save()
-            print("✨ Pets reset successfully!")
-        } catch {
-            print("❌ Error resetting pets: \(error)")
         }
     }
 }
