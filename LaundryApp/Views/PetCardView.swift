@@ -114,7 +114,7 @@ struct PetCardView: View {
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                             
-                            HappinessIndicator(level: pet.happinessLevel)
+                            HappinessIndicator(level: pet.currentHappiness)
                         }
                     }
                     

@@ -1,5 +1,5 @@
 //
-//  LaundryPet.swift
+//  LaundryPet.swift (Updated with Time-Based Happiness)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -8,69 +8,35 @@
 import Foundation
 import SwiftData
 
-/**
- * LAUNDRY PET MODEL
- * 
- * This is the core model of our app - represents a virtual pet that corresponds
- * to a real laundry category (clothes, sheets, or towels).
- * 
- * CORE CONCEPT:
- * Each pet has a personality, gets dirty over time, and needs care through
- * the complete laundry cycle: dirty → washing → drying → folding → clean
- * 
- * KEY FEATURES:
- * 1. State Management: Tracks current laundry state
- * 2. Timer Integration: Manages wash/dry cycle timers
- * 3. Happiness System: Emotional feedback based on care
- * 4. Streak Tracking: Rewards for completing full cycles
- * 5. Activity Logging: Records all user actions
- * 6. Customizable Schedules: User can adjust wash frequencies
- * 
- * GAMIFICATION ELEMENTS:
- * - Happiness levels that change based on care
- * - Streak counting for completed cycles
- * - Pet personalities that affect notification messages
- * - Visual states that reflect real laundry conditions
- */
-
-/// Main model representing a laundry pet with its current state and schedule
 @Model
 final class LaundryPet {
-    @Attribute(.unique) var id: UUID              // Unique identifier for this pet
-    var type: PetType                            // Which type of laundry (clothes/sheets/towels)
-    var name: String                             // User-friendly pet name
-    var currentState: PetState                   // Current state in laundry cycle
-    var lastWashDate: Date                       // When pet was last completely cleaned
-    var washFrequency: TimeInterval              // How often pet gets dirty (seconds)
-    var washTime: TimeInterval                   // Duration of wash cycle (seconds)
-    var dryTime: TimeInterval                    // Duration of dry cycle (seconds)
-    var happinessLevel: Int                      // Pet's happiness (0-100)
-    var streakCount: Int                         // Number of completed full cycles
-    var isActive: Bool                           // Whether pet is active (for future features)
-    var createdDate: Date                        // When pet was created
-    var lastStateChange: Date                    // When state was last changed
+    @Attribute(.unique) var id: UUID
+    var type: PetType
+    var name: String
+    var currentState: PetState
+    var lastWashDate: Date
+    var washFrequency: TimeInterval
+    var washTime: TimeInterval
+    var dryTime: TimeInterval
+    var happinessLevel: Int  // Still stored but now calculated dynamically
+    var streakCount: Int
+    var isActive: Bool
+    var createdDate: Date
+    var lastStateChange: Date
     
-    // Relationships
-    @Relationship(deleteRule: .cascade) var logs: [LaundryLog] = []  // Activity history
+    @Relationship(deleteRule: .cascade) var logs: [LaundryLog] = []
     
-    /**
-     * INITIALIZER
-     * 
-     * Creates a new laundry pet with default values.
-     * Pets start clean and happy, but are positioned 80% through their
-     * first cycle so they'll need attention soon (for testing purposes).
-     */
     init(type: PetType, name: String? = nil) {
         self.id = UUID()
         self.type = type
         self.name = name ?? type.displayName
         self.currentState = .clean
-        // Start 80% through the cycle so pet will need attention soon
+        // Start pets closer to needing attention for testing
         self.lastWashDate = Date().addingTimeInterval(-type.defaultFrequency * 0.8)
         self.washFrequency = type.defaultFrequency
         self.washTime = type.defaultWashTime
         self.dryTime = type.defaultDryTime
-        self.happinessLevel = 100
+        self.happinessLevel = 100  // Will be calculated dynamically
         self.streakCount = 0
         self.isActive = true
         self.createdDate = Date()
@@ -78,85 +44,113 @@ final class LaundryPet {
     }
     
     /**
-     * TIME UNTIL DIRTY
-     * 
-     * Calculates how much time is left until this pet gets dirty.
-     * Returns negative value if the pet is already overdue for washing.
+     * DYNAMIC HAPPINESS CALCULATION
+     *
+     * Calculates happiness based on:
+     * 1. Current state (washing, drying are positive)
+     * 2. Time since last wash (gets unhappier as it gets dirtier)
+     * 3. Whether pet is overdue for washing
+     *
+     * HAPPINESS SYSTEM:
+     * - Clean & Fresh: 100 hearts (5/5)
+     * - Getting dirty: 80-60 hearts (4/5 - 3/5)
+     * - Dirty: 40-20 hearts (2/5 - 1/5)
+     * - Overdue: 0 hearts (0/5 - dead!)
+     * - Washing/Drying: Slowly recovering (animated)
      */
+    var currentHappiness: Int {
+        // Base happiness on current state
+        let baseHappiness = currentState.baseHappiness
+        
+        // Calculate time-based happiness decay
+        let timeFactor = calculateTimeFactor()
+        
+        // Combine base happiness with time factor
+        let calculatedHappiness = Int(Double(baseHappiness) * timeFactor)
+        
+        // Clamp between 0 and 100
+        return max(0, min(100, calculatedHappiness))
+    }
+    
+    /**
+     * CALCULATE TIME FACTOR
+     *
+     * Returns a multiplier (0.0 to 1.0) based on time since last wash:
+     * - 1.0: Just washed (full happiness)
+     * - 0.5: Halfway to next wash (reduced happiness)
+     * - 0.0: Overdue for wash (no happiness)
+     */
+    private func calculateTimeFactor() -> Double {
+        // Special cases for active wash/dry cycles
+        switch currentState {
+        case .washing, .drying:
+            // During wash/dry, slowly recover happiness
+            return 0.8 // 80% happiness during cleaning process
+            
+        case .clean:
+            return 1.0 // Full happiness when clean
+            
+        default:
+            break
+        }
+        
+        // Calculate based on time since last wash
+        let timeSinceWash = Date().timeIntervalSince(lastWashDate)
+        let timeUntilDirty = washFrequency - timeSinceWash
+        
+        if timeUntilDirty <= 0 {
+            // Overdue - happiness is zero (dead hearts)
+            return 0.0
+        }
+        
+        // Linear decay from 1.0 (just washed) to 0.2 (almost dirty)
+        let progress = timeSinceWash / washFrequency
+        return max(0.2, 1.0 - (progress * 0.8)) // Never goes below 0.2 until overdue
+    }
+    
     var timeUntilDirty: TimeInterval {
         let timeSinceLastWash = Date().timeIntervalSince(lastWashDate)
         return washFrequency - timeSinceLastWash
     }
     
-    /**
-     * NEEDS ATTENTION
-     * 
-     * Whether this pet currently requires user action.
-     * Used for sorting pets and showing notification badges.
-     */
     var needsAttention: Bool {
         return currentState.requiresAction
     }
     
-    /**
-     * IS OVERDUE
-     * 
-     * Whether this pet is overdue for washing (past its scheduled wash time).
-     * Used for visual indicators and escalating notifications.
-     */
     var isOverdue: Bool {
         return timeUntilDirty < 0
     }
     
     /**
-     * UPDATE STATE
-     * 
-     * The core method for changing a pet's state. This handles:
-     * 1. State transitions with proper validation
-     * 2. Timer management (starting/stopping wash/dry timers)
-     * 3. Happiness updates based on new state
-     * 4. Streak counting for completed cycles
-     * 5. Activity logging for analytics
-     * 6. Database persistence
-     * 
-     * TIMER INTEGRATION:
-     * - washing → drying: Automatically starts dry timer
-     * - drying → readyToFold: Timer completes automatically
-     * 
-     * GAMIFICATION:
-     * - Happiness updates based on state
-     * - Streak counting for completed full cycles
-     * - Activity logging for progress tracking
+     * UPDATE STATE (Enhanced with Happiness Management)
      */
     func updateState(to newState: PetState, context: ModelContext? = nil) {
         let oldState = currentState
         currentState = newState
         lastStateChange = Date()
         
-        // Update happiness based on new state
-        happinessLevel = newState.happinessLevel
+        // Update stored happiness (will be overridden by currentHappiness calculation)
+        happinessLevel = currentHappiness
         
         // Handle automatic timer transitions
         switch (oldState, newState) {
         case (.washing, .drying):
-            // Wash cycle completed, automatically start dry timer
             TimerService.shared.startDryTimer(for: self, duration: dryTime)
             
         case (.drying, .readyToFold):
-            // Dry cycle completed - no more timers needed
-            break
+            break // Dry cycle completed
             
         default:
             break
         }
         
-        // Track completed full cycles for streak counting
+        // Track completed cycles for streak counting
         if oldState == .folded && newState == .clean {
             streakCount += 1
-            lastWashDate = Date()
+            lastWashDate = Date() // Reset the wash timer
         }
         
-        // Create activity log entry for analytics
+        // Create activity log
         let log = LaundryLog(petID: id, actionType: actionForStateTransition(from: oldState, to: newState))
         logs.append(log)
         
@@ -164,22 +158,10 @@ final class LaundryPet {
         if let context = context {
             try? context.save()
         }
+        
+        print("🐾 \(name) state changed: \(oldState.displayName) → \(newState.displayName) (Happiness: \(currentHappiness))")
     }
     
-    /**
-     * ACTION FOR STATE TRANSITION
-     * 
-     * Determines what type of action was performed based on the state change.
-     * Used for creating accurate activity log entries.
-     * 
-     * STATE TRANSITION MAPPINGS:
-     * - dirty/abandoned → washing: User started wash
-     * - washing → drying: User moved to dryer (or timer completed)
-     * - drying → readyToFold: User removed from dryer (or timer completed)
-     * - readyToFold → folded: User folded clothes
-     * - folded → clean: User put clothes away
-     * - Any other transition: Skipped cycle
-     */
     private func actionForStateTransition(from oldState: PetState, to newState: PetState) -> LaundryAction {
         switch (oldState, newState) {
         case (.dirty, .washing), (.abandoned, .washing):
@@ -199,40 +181,36 @@ final class LaundryPet {
 }
 
 /**
- * PET STATE HAPPINESS EXTENSION
- * 
- * Extends PetState to provide happiness levels for each state.
- * This is used for the gamification system to show how pets feel
- * about their current situation.
- * 
- * HAPPINESS LEVELS (0-100):
- * - 100: Clean and happy (best state)
- * - 90: Folded (almost back to clean)
- * - 80: Washing (happy to be getting clean)
- * - 75: Drying (getting clean, but waiting)
- * - 70: Wet ready (clean but waiting to dry)
- * - 60: Dirty (needs attention)
- * - 50: Ready to fold (waiting patiently)
- * - 10: Abandoned (very unhappy)
+ * ENHANCED PET STATE WITH BASE HAPPINESS
+ *
+ * Each state now has a base happiness level that gets modified by time factors
  */
-
 extension PetState {
     /**
-     * HAPPINESS LEVEL
-     * 
-     * Returns the happiness level (0-100) for this pet state.
-     * Used for visual feedback and gamification elements.
+     * BASE HAPPINESS FOR EACH STATE
+     *
+     * This is the happiness level before time-based modifications:
+     * - Active states (washing, drying) maintain good happiness
+     * - Waiting states depend on time calculations
+     * - Abandoned state is always very low
+     */
+    var baseHappiness: Int {
+        switch self {
+        case .clean: return 100       // Perfect when just cleaned
+        case .dirty: return 60        // Base dirty happiness (modified by time)
+        case .washing: return 85      // Happy to be getting clean
+        case .wetReady: return 75     // Clean but impatient
+        case .drying: return 90       // Almost back to perfect
+        case .readyToFold: return 70  // Clean but waiting
+        case .folded: return 95       // Almost done!
+        case .abandoned: return 5     // Very sad, needs rescue
+        }
+    }
+    
+    /**
+     * OLD STATIC HAPPINESS (KEPT FOR COMPATIBILITY)
      */
     var happinessLevel: Int {
-        switch self {
-        case .clean: return 100        // Best state - fresh and ready
-        case .dirty: return 60         // Needs attention but not urgent
-        case .washing: return 80       // Happy to be getting clean
-        case .wetReady: return 70      // Clean but waiting to dry
-        case .drying: return 75        // Getting clean, but waiting
-        case .readyToFold: return 50   // Waiting patiently for user
-        case .folded: return 90        // Almost back to clean
-        case .abandoned: return 10     // Very unhappy - needs rescue
-        }
+        return baseHappiness
     }
 }

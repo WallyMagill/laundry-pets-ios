@@ -1,5 +1,5 @@
 //
-//  ContentView.swift
+//  ContentView.swift (Fixed Quick Actions)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -8,40 +8,16 @@
 import SwiftUI
 import SwiftData
 
-/**
- * MAIN DASHBOARD VIEW
- * 
- * This is the heart of our Laundry Pets app - the main screen users see when they open the app.
- * It displays all three pets with their current states, timers, and quick actions.
- * 
- * KEY FEATURES:
- * 1. Pet status cards with real-time timer updates
- * 2. Smart sorting (pets needing attention first)
- * 3. Quick action buttons for immediate pet care
- * 4. Time-based greetings (good morning, afternoon, etc.)
- * 5. Debug functions for testing (long press to reset pets)
- * 
- * UI STRUCTURE:
- * - Header with greeting and notification bell
- * - Scrollable list of pet cards
- * - Quick action bar (when pets need attention)
- */
-
 struct ContentView: View {
-    // SwiftData context for saving pet state changes
     @Environment(\.modelContext) private var modelContext
-    
-    // Automatically fetch all pets from the database
-    // SwiftData will automatically update the UI when pets change
     @Query private var pets: [LaundryPet]
     
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // HEADER SECTION - Shows greeting and attention status
+                // HEADER SECTION
                 VStack(spacing: 12) {
                     HStack {
-                        // Left side: Personalized greeting and app title
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Good \(timeOfDayGreeting)! 👋")
                                 .font(.headline)
@@ -54,9 +30,8 @@ struct ContentView: View {
                         
                         Spacer()
                         
-                        // Right side: Notification bell with attention counter
+                        // Notification bell with attention counter
                         VStack {
-                            // Red badge showing number of pets needing attention
                             if petsNeedingAttention > 0 {
                                 Text("\(petsNeedingAttention)")
                                     .font(.caption)
@@ -67,7 +42,6 @@ struct ContentView: View {
                                     .clipShape(Circle())
                             }
                             
-                            // Notification bell icon (red if pets need attention)
                             Image(systemName: "bell")
                                 .font(.title2)
                                 .foregroundColor(petsNeedingAttention > 0 ? .red : .gray)
@@ -76,7 +50,7 @@ struct ContentView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                     
-                    // Status message below header
+                    // Status message
                     if petsNeedingAttention > 0 {
                         Text("\(petsNeedingAttention) pet\(petsNeedingAttention == 1 ? "" : "s") need\(petsNeedingAttention == 1 ? "s" : "") your attention")
                             .font(.subheadline)
@@ -92,26 +66,22 @@ struct ContentView: View {
                 .padding(.bottom, 20)
                 .background(Color(.systemGroupedBackground))
                 
-                // PET CARDS SECTION - Main content area with all pets
+                // PET CARDS SECTION
                 ScrollView {
                     LazyVStack(spacing: 16) {
-                        // Smart sorting: pets needing attention first, then alphabetical
                         ForEach(pets.sorted(by: { first, second in
-                            // Priority 1: Pets needing attention come first
                             if first.needsAttention && !second.needsAttention {
                                 return true
                             } else if !first.needsAttention && second.needsAttention {
                                 return false
                             } else {
-                                // Priority 2: Alphabetical by pet type (clothes, sheets, towels)
                                 return first.type.rawValue < second.type.rawValue
                             }
                         }), id: \.id) { pet in
-                            // Each pet card is a navigation link to the detail view
                             NavigationLink(destination: PetDetailView(pet: pet)) {
                                 PetCardView(pet: pet, showActionButton: false)
                             }
-                            .buttonStyle(PlainButtonStyle()) // Removes default link styling
+                            .buttonStyle(PlainButtonStyle())
                         }
                     }
                     .padding(.horizontal, 16)
@@ -119,8 +89,7 @@ struct ContentView: View {
                 }
                 .background(Color(.systemGroupedBackground))
                 
-                // QUICK ACTION BAR - Shows when pets need attention
-                // This provides immediate action buttons without navigating to detail view
+                // FIXED QUICK ACTION BAR
                 if petsNeedingAttention > 0 {
                     VStack {
                         Divider()
@@ -132,12 +101,12 @@ struct ContentView: View {
                             
                             Spacer()
                             
-                            // Show up to 2 quick action buttons for pets needing attention
-                            ForEach(petsRequiringAction.prefix(2), id: \.id) { pet in
+                            // Show quick action buttons for ALL pets needing attention
+                            ForEach(petsRequiringAction, id: \.id) { pet in
                                 Button(action: { performQuickAction(for: pet) }) {
                                     HStack(spacing: 4) {
                                         Text(pet.type.emoji)
-                                        Text(pet.currentState.primaryActionText ?? "Help")
+                                        Text(quickActionText(for: pet))
                                             .font(.caption)
                                             .fontWeight(.semibold)
                                     }
@@ -159,130 +128,126 @@ struct ContentView: View {
             .navigationBarHidden(true)
         }
         .onAppear {
-            // Create default pets if none exist (first launch scenario)
             if pets.isEmpty {
                 createDefaultPets()
             }
         }
         .onLongPressGesture {
-            // DEBUG FEATURE: Long press anywhere to reset all pets for testing
-            // This is useful during development to test different pet states
             resetPetsForTesting()
         }
     }
     
     // MARK: - Computed Properties
     
-    /**
-     * TIME-BASED GREETING
-     * 
-     * Returns appropriate greeting based on current time of day.
-     * Makes the app feel more personal and friendly.
-     */
     private var timeOfDayGreeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
         switch hour {
-        case 5..<12: return "morning"      // 5 AM - 11:59 AM
-        case 12..<17: return "afternoon"   // 12 PM - 4:59 PM  
-        case 17..<22: return "evening"     // 5 PM - 9:59 PM
-        default: return "night"            // 10 PM - 4:59 AM
+        case 5..<12: return "morning"
+        case 12..<17: return "afternoon"
+        case 17..<22: return "evening"
+        default: return "night"
         }
     }
     
-    /**
-     * COUNT OF PETS NEEDING ATTENTION
-     * 
-     * Used for the notification badge and status messages.
-     * A pet needs attention if it's in a state that requires user action.
-     */
     private var petsNeedingAttention: Int {
         pets.filter { $0.needsAttention }.count
     }
     
-    /**
-     * ARRAY OF PETS REQUIRING ACTION
-     * 
-     * Used for the quick action bar and sorting.
-     * These are pets in states like .dirty, .readyToFold, etc.
-     */
     private var petsRequiringAction: [LaundryPet] {
         pets.filter { $0.needsAttention }
     }
     
     // MARK: - Helper Methods
     
-    /**
-     * PET TYPE COLORS
-     * 
-     * Each pet type has its own color theme for visual consistency.
-     * These colors are used throughout the UI for buttons, borders, etc.
-     */
     private func colorForPetType(_ type: PetType) -> Color {
         switch type {
-        case .clothes: return .blue      // Energetic blue for daily wear
-        case .sheets: return .purple     // Cozy purple for bedding
-        case .towels: return .green      // Fresh green for bathroom items
+        case .clothes: return .blue
+        case .sheets: return .purple
+        case .towels: return .green
         }
     }
     
     /**
-     * QUICK ACTION PERFORMER
-     * 
-     * Handles quick actions from the action bar without navigating to detail view.
-     * Performs the most logical next action for each pet state.
+     * FIXED QUICK ACTION TEXT
+     *
+     * Returns appropriate action text for each pet state
+     */
+    private func quickActionText(for pet: LaundryPet) -> String {
+        switch pet.currentState {
+        case .dirty: return "Wash"
+        case .wetReady: return "Dry"
+        case .readyToFold: return "Fold"
+        case .folded: return "Put Away"
+        case .abandoned: return "Rescue"
+        default: return "Help"
+        }
+    }
+    
+    /**
+     * FIXED QUICK ACTION PERFORMER
+     *
+     * Handles ALL pet states and integrates with TimerService properly
      */
     private func performQuickAction(for pet: LaundryPet) {
-        let nextState: PetState
+        print("🎯 Performing quick action for \(pet.name) in state: \(pet.currentState)")
         
-        // Determine the next logical state for this pet
         switch pet.currentState {
-        case .dirty:
-            nextState = .washing         // Start wash cycle
+        case .dirty, .abandoned:
+            // Start wash cycle with timer integration
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .washing, context: modelContext)
+            }
+            // Start wash timer - using short duration for testing
+            TimerService.shared.startWashTimer(for: pet, duration: 15) // 15 seconds for testing
+            
+        case .wetReady:
+            // Move to dryer and start dry timer
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .drying, context: modelContext)
+            }
+            // Start dry timer - using short duration for testing
+            TimerService.shared.startDryTimer(for: pet, duration: 15) // 15 seconds for testing
+            
         case .readyToFold:
-            nextState = .folded          // Fold the clothes
+            // Mark as folded
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .folded, context: modelContext)
+            }
+            
         case .folded:
-            nextState = .clean           // Put away (complete cycle)
-        case .abandoned:
-            nextState = .clean           // Rescue the pet
+            // Complete cycle - put away
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .clean, context: modelContext)
+            }
+            
         default:
-            return                       // No action needed
+            print("⚠️ No quick action available for state: \(pet.currentState)")
+            return
         }
         
-        // Animate the state change and save to database
-        withAnimation(.easeInOut(duration: 0.3)) {
-            pet.updateState(to: nextState, context: modelContext)
-        }
-        
-        // Provide haptic feedback for user action
-        let impact = UIImpactFeedbackGenerator(style: .light)
+        // Provide haptic feedback
+        let impact = UIImpactFeedbackGenerator(style: .medium)
         impact.impactOccurred()
+        
+        print("✅ Quick action completed for \(pet.name)")
     }
     
-    /**
-     * CREATE DEFAULT PETS (FIRST LAUNCH)
-     * 
-     * This function creates the three default pets when the app is launched for the first time.
-     * It's called from both the app setup and this view as a fallback.
-     */
     private func createDefaultPets() {
-        print("🐾 Creating default pets...")
+        print("🐾 Creating default pets with testing durations...")
         
-        // Create the three pet types with their unique personalities
-        let clothesBuddy = LaundryPet(type: .clothes)      // Energetic daily companion
-        let sheetSpirit = LaundryPet(type: .sheets)        // Sleepy, cozy bedroom buddy
-        let towelPal = LaundryPet(type: .towels)           // Helpful but anxious bathroom friend
+        let clothesBuddy = LaundryPet(type: .clothes)
+        let sheetSpirit = LaundryPet(type: .sheets)
+        let towelPal = LaundryPet(type: .towels)
         
-        // Set them to different states for comprehensive testing
-        clothesBuddy.updateState(to: .dirty, context: modelContext)     // Can test wash cycle
-        sheetSpirit.updateState(to: .dirty, context: modelContext)      // Can test wash cycle  
-        towelPal.updateState(to: .readyToFold, context: modelContext)   // Can test folding action
+        // Set different states for testing
+        clothesBuddy.updateState(to: .dirty, context: modelContext)
+        sheetSpirit.updateState(to: .readyToFold, context: modelContext)
+        towelPal.updateState(to: .dirty, context: modelContext)
         
-        // Add to database
         modelContext.insert(clothesBuddy)
         modelContext.insert(sheetSpirit)
         modelContext.insert(towelPal)
         
-        // Save to persistent storage
         do {
             try modelContext.save()
             print("✨ Default pets created successfully!")
@@ -291,42 +256,29 @@ struct ContentView: View {
         }
     }
     
-    /**
-     * DEBUG FUNCTION - RESET PETS FOR TESTING
-     * 
-     * This function is called when user long-presses anywhere on the main screen.
-     * It resets all pets to a consistent state for testing the complete laundry cycle.
-     * 
-     * DEBUGGING FEATURES:
-     * - Cancels any active timers
-     * - Resets all pets to dirty state
-     * - Updates happiness levels and timestamps
-     * - Saves changes to database
-     */
     private func resetPetsForTesting() {
         print("🔄 Resetting pets for testing...")
         
         for pet in pets {
-            // Cancel any active wash/dry timers
             TimerService.shared.cancelTimer(for: pet)
             
-            // Reset ALL pets to dirty state for full cycle testing
-            // This allows testing the complete flow: dirty → washing → drying → folding → clean
+            // Reset to different states for comprehensive testing
             switch pet.type {
             case .clothes:
                 pet.currentState = .dirty
             case .sheets:
-                pet.currentState = .dirty
+                pet.currentState = .readyToFold
             case .towels:
-                pet.currentState = .dirty  // All pets start dirty for testing
+                pet.currentState = .folded
             }
             
-            // Update derived properties
-            pet.happinessLevel = pet.currentState.happinessLevel
+            pet.happinessLevel = pet.currentHappiness
             pet.lastStateChange = Date()
+            
+            // Reset wash date for testing happiness decay
+            pet.lastWashDate = Date().addingTimeInterval(-pet.washFrequency * 0.9) // Almost overdue
         }
         
-        // Save all changes to database
         do {
             try modelContext.save()
             print("✨ Pets reset successfully!")

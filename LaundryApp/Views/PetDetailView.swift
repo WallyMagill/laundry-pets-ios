@@ -150,7 +150,7 @@ struct PetDetailView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                 
-                                HappinessIndicator(level: pet.happinessLevel)
+                                HappinessIndicator(level: pet.currentHappiness)
                             }
                         }
                         
