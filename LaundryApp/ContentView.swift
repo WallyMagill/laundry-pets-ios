@@ -10,52 +10,72 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+    @Query private var pets: [LaundryPet]
+    
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+        NavigationView {
+            VStack(spacing: 20) {
+                // Header
+                VStack(spacing: 8) {
+                    Text("🧺 Your Laundry Pets")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                    
+                    Text("Keep your fuzzy friends clean and happy!")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.top)
+                
+                // Pet Cards
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        ForEach(pets, id: \.id) { pet in
+                            PetCardView(pet: pet)
+                        }
                     }
+                    .padding(.horizontal)
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                
+                // Debug Information (remove in production)
+                if pets.isEmpty {
+                    VStack {
+                        Text("No pets found")
+                            .foregroundColor(.secondary)
+                        
+                        Button("Create Default Pets") {
+                            createDefaultPets()
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
+                    .padding()
                 }
             }
-        } detail: {
-            Text("Select an item")
+            .navigationTitle("Laundry Pets")
+            .navigationBarHidden(true)
         }
     }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
-        }
+    
+    /// Creates the default three pets (for testing)
+    private func createDefaultPets() {
+        let clothesBuddy = LaundryPet(type: .clothes)
+        let sheetSpirit = LaundryPet(type: .sheets)
+        let towelPal = LaundryPet(type: .towels)
+        
+        // Add variety for testing
+        clothesBuddy.updateState(to: .dirty, context: modelContext)
+        sheetSpirit.updateState(to: .clean, context: modelContext)
+        towelPal.updateState(to: .readyToFold, context: modelContext)
+        
+        modelContext.insert(clothesBuddy)
+        modelContext.insert(sheetSpirit)
+        modelContext.insert(towelPal)
+        
+        try? modelContext.save()
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: [LaundryPet.self, LaundryLog.self], inMemory: true)
 }
