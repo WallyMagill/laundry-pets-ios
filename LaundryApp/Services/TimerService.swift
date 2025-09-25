@@ -9,6 +9,40 @@ import Foundation
 import SwiftUI
 import UserNotifications
 
+/**
+ * TIMER SERVICE
+ * 
+ * Manages wash and dry cycle timers with background persistence.
+ * This is a critical service that handles the automatic progression
+ * of pets through the laundry cycle.
+ * 
+ * KEY RESPONSIBILITIES:
+ * 1. Start/stop wash and dry cycle timers
+ * 2. Persist timer data across app launches
+ * 3. Handle app backgrounding/foregrounding
+ * 4. Automatically update pet states when timers complete
+ * 5. Cancel timers when needed
+ * 
+ * ARCHITECTURE:
+ * - Singleton pattern (shared instance)
+ * - In-memory timers for active counting
+ * - UserDefaults persistence for background survival
+ * - App lifecycle observers for state management
+ * 
+ * TIMER FLOW:
+ * 1. User starts wash → TimerService.startWashTimer()
+ * 2. Timer counts down (45 minutes default)
+ * 3. Timer completes → Pet state changes to .wetReady
+ * 4. User moves to dryer → TimerService.startDryTimer()
+ * 5. Timer counts down (60 minutes default)
+ * 6. Timer completes → Pet state changes to .readyToFold
+ * 
+ * BACKGROUND PERSISTENCE:
+ * - Timers are saved to UserDefaults when app backgrounds
+ * - Timers are restored when app becomes active
+ * - Expired timers are handled appropriately
+ */
+
 /// Manages wash/dry cycle timers with background persistence
 @Observable
 class TimerService {
@@ -17,14 +51,21 @@ class TimerService {
     // Active timers (in-memory, recreated on app launch)
     private var activeTimers: [UUID: Timer] = [:]
     
-    // Timer data persistence keys
+    // Timer data persistence keys for UserDefaults
     private let timerDataKey = "ActiveTimerData"
     
+    /**
+     * INITIALIZER
+     * 
+     * Sets up the timer service with:
+     * 1. Restoration of any persisted timers
+     * 2. App lifecycle observers for background/foreground handling
+     */
     private init() {
-        // Restore timers on initialization
+        // Restore any timers that were running when app was backgrounded
         restoreTimersFromBackground()
         
-        // Listen for app lifecycle events
+        // Listen for app lifecycle events to handle backgrounding
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(appWillEnterBackground),
@@ -40,6 +81,13 @@ class TimerService {
         )
     }
     
+    /**
+     * DEINITIALIZER
+     * 
+     * Cleanup when service is deallocated:
+     * 1. Remove notification observers
+     * 2. Invalidate all active timers
+     */
     deinit {
         NotificationCenter.default.removeObserver(self)
         activeTimers.values.forEach { $0.invalidate() }
@@ -50,7 +98,19 @@ class TimerService {
 
 extension TimerService {
     
-    /// Start a wash cycle timer for the specified pet
+    /**
+     * START WASH TIMER
+     * 
+     * Starts a wash cycle timer for the specified pet.
+     * When the timer completes, the pet's state will automatically
+     * change to .wetReady (requiring user to move to dryer).
+     * 
+     * PROCESS:
+     * 1. Cancel any existing timer for this pet
+     * 2. Create timer data and save to UserDefaults
+     * 3. Start in-memory timer
+     * 4. Log the timer start
+     */
     func startWashTimer(for pet: LaundryPet, duration: TimeInterval = 2700) { // 45 minutes default
         cancelTimer(for: pet) // Cancel any existing timer
         
@@ -63,10 +123,10 @@ extension TimerService {
             petType: pet.type
         )
         
-        // Save to persistent storage
+        // Save to persistent storage for background survival
         saveTimerData(timerData)
         
-        // Create in-memory timer
+        // Create in-memory timer that will complete the wash cycle
         let timer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
             self?.washCycleCompleted(for: pet)
         }
@@ -76,7 +136,20 @@ extension TimerService {
         print("🫧 Started wash timer for \(pet.name) - will complete at \(endTime.formatted(.dateTime.hour().minute()))")
     }
     
-    /// Start a dry cycle timer for the specified pet
+    /**
+     * START DRY TIMER
+     * 
+     * Starts a dry cycle timer for the specified pet.
+     * When the timer completes, the pet's state will automatically
+     * change to .readyToFold (requiring user to fold clothes).
+     * 
+     * PROCESS:
+     * 1. Cancel any existing timer for this pet
+     * 2. Create timer data and save to UserDefaults
+     * 3. Start in-memory timer
+     * 4. Schedule fold reminder notification
+     * 5. Log the timer start
+     */
     func startDryTimer(for pet: LaundryPet, duration: TimeInterval = 3600) { // 60 minutes default
         cancelTimer(for: pet) // Cancel any existing timer
         
@@ -89,10 +162,10 @@ extension TimerService {
             petType: pet.type
         )
         
-        // Save to persistent storage
+        // Save to persistent storage for background survival
         saveTimerData(timerData)
         
-        // Create in-memory timer
+        // Create in-memory timer that will complete the dry cycle
         let timer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
             self?.dryCycleCompleted(for: pet)
         }
