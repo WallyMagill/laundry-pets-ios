@@ -79,9 +79,9 @@ struct ContentView: View {
                             }
                         }), id: \.id) { pet in
                             NavigationLink(destination: PetDetailView(pet: pet)) {
-                                PetCardView(pet: pet, showActionButton: false) // Hide action button since we have navigation
+                                PetCardView(pet: pet, showActionButton: false)
                             }
-                            .buttonStyle(PlainButtonStyle()) // Remove blue link styling
+                            .buttonStyle(PlainButtonStyle())
                         }
                     }
                     .padding(.horizontal, 16)
@@ -131,6 +131,10 @@ struct ContentView: View {
             if pets.isEmpty {
                 createDefaultPets()
             }
+        }
+        .onLongPressGesture {
+            // Long press anywhere to reset pets for testing
+            resetPetsForTesting()
         }
     }
     
@@ -189,7 +193,7 @@ struct ContentView: View {
         impact.impactOccurred()
     }
     
-    /// Creates the default three pets (for testing and first launch)
+    /// Creates the default three pets (for first launch)
     private func createDefaultPets() {
         print("🐾 Creating default pets...")
         
@@ -197,31 +201,7 @@ struct ContentView: View {
         let sheetSpirit = LaundryPet(type: .sheets)
         let towelPal = LaundryPet(type: .towels)
         
-        // Add some variety for testing
-        clothesBuddy.updateState(to: .dirty, context: modelContext)
-        sheetSpirit.updateState(to: .clean, context: modelContext)
-        towelPal.updateState(to: .readyToFold, context: modelContext)
-        
-        modelContext.insert(clothesBuddy)
-        modelContext.insert(sheetSpirit)
-        modelContext.insert(towelPal)
-        
-        do {
-            try modelContext.save()
-            print("✨ Default pets created successfully!")
-        } catch {
-            print("❌ Error creating default pets: \(error)")
-        }
-    }
-    
-    private func createDefaultPets() {
-        print("🐾 Creating default pets...")
-        
-        let clothesBuddy = LaundryPet(type: .clothes)
-        let sheetSpirit = LaundryPet(type: .sheets)
-        let towelPal = LaundryPet(type: .towels)
-        
-        // Better test states - make them actionable
+        // Set them to testable states
         clothesBuddy.updateState(to: .dirty, context: modelContext)     // Can start wash
         sheetSpirit.updateState(to: .dirty, context: modelContext)      // Can start wash
         towelPal.updateState(to: .readyToFold, context: modelContext)   // Can fold
@@ -237,33 +217,38 @@ struct ContentView: View {
             print("❌ Error creating default pets: \(error)")
         }
     }
+    
+    /// Debug function to reset pets for testing
+    private func resetPetsForTesting() {
+        print("🔄 Resetting pets for testing...")
+        
+        for pet in pets {
+            // Cancel any active timers
+            TimerService.shared.cancelTimer(for: pet)
+            
+            // Reset to testable states
+            switch pet.type {
+            case .clothes:
+                pet.currentState = .dirty
+            case .sheets:
+                pet.currentState = .dirty
+            case .towels:
+                pet.currentState = .readyToFold
+            }
+            pet.happinessLevel = pet.currentState.happinessLevel
+            pet.lastStateChange = Date()
+        }
+        
+        do {
+            try modelContext.save()
+            print("✨ Pets reset successfully!")
+        } catch {
+            print("❌ Error resetting pets: \(error)")
+        }
+    }
 }
 
 #Preview {
     ContentView()
         .modelContainer(for: [LaundryPet.self, LaundryLog.self], inMemory: true)
-}
-
-// Add this at the end of ContentView, just before the final }
-.onLongPressGesture {
-    // Long press anywhere to reset pets for testing
-    for pet in pets {
-        switch pet.type {
-        case .clothes:
-            pet.currentState = .dirty
-        case .sheets:
-            pet.currentState = .dirty
-        case .towels:
-            pet.currentState = .readyToFold
-        }
-        pet.happinessLevel = pet.currentState.happinessLevel
-        pet.lastStateChange = Date()
-    }
-    
-    do {
-        try modelContext.save()
-        print("🔄 Reset pets for testing!")
-    } catch {
-        print("❌ Error resetting pets: \(error)")
-    }
 }
