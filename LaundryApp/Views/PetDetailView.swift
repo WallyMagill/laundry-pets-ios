@@ -293,8 +293,33 @@ struct PetDetailView: View {
     private func performPrimaryAction() {
         guard let action = primaryActionForCurrentState else { return }
         
-        withAnimation(.easeInOut(duration: 0.3)) {
-            pet.updateState(to: action.action, context: modelContext)
+        switch pet.currentState {
+        case .dirty:
+            // Start wash cycle with timer
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .washing, context: modelContext)
+            }
+            
+            // Start the actual timer
+            TimerService.shared.startWashTimer(for: pet, duration: pet.washTime)
+            
+        case .readyToFold:
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .folded, context: modelContext)
+            }
+            
+        case .folded:
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .clean, context: modelContext)
+            }
+            
+        case .abandoned:
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .clean, context: modelContext)
+            }
+            
+        default:
+            return
         }
         
         // Haptic feedback

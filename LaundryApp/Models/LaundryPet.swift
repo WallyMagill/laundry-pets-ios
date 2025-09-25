@@ -69,6 +69,20 @@ final class LaundryPet {
         // Update happiness based on state
         happinessLevel = newState.happinessLevel
         
+        // Handle timer transitions
+        switch (oldState, newState) {
+        case (.washing, .drying):
+            // Wash completed, start dry timer
+            TimerService.shared.startDryTimer(for: self, duration: dryTime)
+            
+        case (.drying, .readyToFold):
+            // Dry completed - no more timers needed
+            break
+            
+        default:
+            break
+        }
+        
         // If completing full cycle, update streak and last wash date
         if oldState == .folded && newState == .clean {
             streakCount += 1
