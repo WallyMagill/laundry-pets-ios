@@ -14,7 +14,7 @@ import UIKit
 class NotificationService {
     static let shared = NotificationService()
     
-    @Published var notificationPermission: UNAuthorizationStatus = .notDetermined
+    var notificationPermission: UNAuthorizationStatus = .notDetermined
     
     private let notificationCenter = UNUserNotificationCenter.current()
     

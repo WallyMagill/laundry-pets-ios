@@ -1,4 +1,121 @@
 {
+    // Swift Language Support
+    "swift.path": "/usr/bin/swift",
+    "swift.buildPath": "/usr/bin/swift",
+    "swift.runtimePath": "/usr/bin/swift",
+    
+    // LLDB Debugging Configuration
     "lldb.library": "/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/LLDB",
-    "lldb.launch.expressions": "native"
+    "lldb.launch.expressions": "native",
+    "lldb.console": "internalConsole",
+    "lldb.showDisassembly": "auto",
+    
+    // Swift Formatting and Linting
+    "swift.sourcekit-lsp.serverPath": "/usr/bin/sourcekit-lsp",
+    "swift.sourcekit-lsp.serverArguments": [
+        "-Xswiftc", "-sdk",
+        "-Xswiftc", "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+    ],
+    
+    // File Associations
+    "files.associations": {
+        "*.swift": "swift",
+        "*.plist": "xml",
+        "*.xcconfig": "properties",
+        "*.h": "objective-c",
+        "*.m": "objective-c",
+        "*.mm": "objective-cpp"
+    },
+    
+    // Editor Configuration
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.detectIndentation": false,
+    "editor.rulers": [100],
+    "editor.wordWrap": "wordWrapColumn",
+    "editor.wordWrapColumn": 100,
+    
+    // Swift-specific editor settings
+    "[swift]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    
+    // File Explorer
+    "explorer.fileNesting.enabled": true,
+    "explorer.fileNesting.patterns": {
+        "*.swift": "${capture}.swift",
+        "*.h": "${capture}.m",
+        "*.plist": "${capture}.*"
+    },
+    
+    // Search Configuration
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/bower_components": true,
+        "**/.git": true,
+        "**/DerivedData": true,
+        "**/build": true,
+        "**/.build": true,
+        "**/Pods": true,
+        "**/Carthage": true
+    },
+    
+    // Files to exclude from file watcher
+    "files.watcherExclude": {
+        "**/DerivedData/**": true,
+        "**/build/**": true,
+        "**/.build/**": true,
+        "**/Pods/**": true,
+        "**/Carthage/**": true,
+        "**/node_modules/**": true
+    },
+    
+    // Terminal Configuration
+    "terminal.integrated.defaultProfile.osx": "zsh",
+    "terminal.integrated.cwd": "${workspaceFolder}",
+    
+    // Git Configuration
+    "git.ignoreLimitWarning": true,
+    "git.autofetch": true,
+    
+    // IntelliSense and Code Completion
+    "editor.suggestSelection": "first",
+    "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
+    
+    // Swift Package Manager
+    "swift.packagePath": "${workspaceFolder}",
+    
+    // iOS Simulator Integration
+    "ios-simulator.simulatorPath": "/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app",
+    
+    // Code Actions
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit",
+        "source.fixAll": "explicit"
+    },
+    
+    // Bracket Pair Colorization
+    "editor.bracketPairColorization.enabled": true,
+    "editor.guides.bracketPairs": true,
+    
+    // Minimap
+    "editor.minimap.enabled": true,
+    "editor.minimap.showSlider": "always",
+    
+    // Breadcrumbs
+    "breadcrumbs.enabled": true,
+    
+    // Problems Panel
+    "problems.decorations.enabled": true,
+    
+    // Emmet (for SwiftUI previews and HTML)
+    "emmet.includeLanguages": {
+        "swift": "html"
+    }
 }
