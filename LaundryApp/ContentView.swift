@@ -226,14 +226,14 @@ struct ContentView: View {
             // Cancel any active timers
             TimerService.shared.cancelTimer(for: pet)
             
-            // Reset to testable states
+            // Reset ALL pets to dirty for full cycle testing
             switch pet.type {
             case .clothes:
                 pet.currentState = .dirty
             case .sheets:
                 pet.currentState = .dirty
             case .towels:
-                pet.currentState = .readyToFold
+                pet.currentState = .dirty  // Changed from .readyToFold to .dirty
             }
             pet.happinessLevel = pet.currentState.happinessLevel
             pet.lastStateChange = Date()
