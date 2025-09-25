@@ -1,5 +1,5 @@
 //
-//  PetCardView.swift (Enhanced with Timer Support)
+//  PetCardView.swift (Final Clean Version)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -114,7 +114,7 @@ struct PetCardView: View {
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                             
-                            HappinessIndicator(level: pet.currentHappiness)
+                            HappinessIndicator(pet: pet)
                         }
                     }
                     
@@ -524,21 +524,4 @@ struct ActiveTimerView: View {
     }
 }
 
-/// Simple happiness level indicator (reusable component)
-struct HappinessIndicator: View {
-    let level: Int
-    
-    var body: some View {
-        HStack(spacing: 1) {
-            ForEach(0..<5) { index in
-                Image(systemName: index < heartCount ? "heart.fill" : "heart")
-                    .font(.system(size: 8))
-                    .foregroundColor(index < heartCount ? .red : .gray.opacity(0.4))
-            }
-        }
-    }
-    
-    private var heartCount: Int {
-        return max(0, min(5, Int(Double(level) / 20.0))) // Convert 0-100 to 0-5 hearts
-    }
-}
+// HappinessIndicator is imported from HappinessIndicator.swift

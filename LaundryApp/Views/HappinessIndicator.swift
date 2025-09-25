@@ -1,5 +1,5 @@
 //
-//  HappinessIndicator.swift (Animated Time-Based Hearts)
+//  HappinessIndicator.swift
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
