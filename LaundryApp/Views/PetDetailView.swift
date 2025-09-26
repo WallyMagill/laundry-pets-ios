@@ -1,5 +1,5 @@
 //
-//  PetDetailView.swift (Fixed Compilation Errors)
+//  PetDetailView.swift (Fixed - Timer Event Handling)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -20,6 +20,7 @@ struct PetDetailView: View {
     @State private var remainingTime: TimeInterval? = nil
     @State private var timer: Timer?
     @State private var animationScale: CGFloat = 1.0
+    @State private var timerUpdateTimer: Timer?
     
     var body: some View {
         NavigationView {
@@ -83,6 +84,7 @@ struct PetDetailView: View {
                                             .fontWeight(.bold)
                                             .monospacedDigit()
                                             .foregroundColor(colorForPetType)
+                                            .animation(.easeInOut(duration: 0.3), value: remaining)
                                         
                                         Text("remaining")
                                             .font(.caption2)
@@ -90,10 +92,11 @@ struct PetDetailView: View {
                                     }
                                 }
                                 
-                                // Progress bar
+                                // Progress bar with smooth animation
                                 ProgressView(value: timerService.getTimerProgress(for: pet) ?? 0.0)
                                     .progressViewStyle(LinearProgressViewStyle(tint: colorForPetType))
                                     .scaleEffect(y: 1.2)
+                                    .animation(.easeInOut(duration: 0.5), value: timerService.getTimerProgress(for: pet) ?? 0.0)
                                 
                                 // Cancel button
                                 Button("Cancel Timer") {
@@ -196,20 +199,41 @@ struct PetDetailView: View {
                     // Action Buttons Section
                     VStack(spacing: 12) {
                         if let primaryAction = primaryActionForCurrentState, !timerService.hasActiveTimer(for: pet) {
-                            Button(action: { performPrimaryAction() }) {
-                                HStack {
-                                    Text(primaryAction.emoji)
-                                        .font(.title2)
-                                    Text(primaryAction.text)
-                                        .fontWeight(.semibold)
+                            if pet.currentState == .dirty || pet.currentState == .wetReady || pet.currentState == .readyToFold || pet.currentState == .folded {
+                                // Big button for required workflow actions
+                                Button(action: { performPrimaryAction() }) {
+                                    HStack {
+                                        Text(primaryAction.emoji)
+                                            .font(.title2)
+                                        Text(primaryAction.text)
+                                            .fontWeight(.semibold)
+                                            .font(.body)
+                                    }
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(colorForPetType)
+                                    .cornerRadius(12)
                                 }
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(colorForPetType)
-                                .cornerRadius(12)
+                                .padding(.horizontal)
+                            } else {
+                                // Small transparent button for optional actions (clean state)
+                                Button(action: { performPrimaryAction() }) {
+                                    HStack(spacing: 4) {
+                                        Text(primaryAction.emoji)
+                                            .font(.caption)
+                                        Text(primaryAction.text)
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                    }
+                                    .foregroundColor(colorForPetType)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(colorForPetType.opacity(0.1))
+                                    .cornerRadius(8)
+                                }
+                                .padding(.horizontal)
                             }
-                            .padding(.horizontal)
                         }
                         
                         // Secondary actions if needed
@@ -281,9 +305,90 @@ struct PetDetailView: View {
         .navigationBarHidden(true)
         .onAppear {
             startTimerUpdates()
+            setupTimerEventListeners()
         }
         .onDisappear {
             stopTimerUpdates()
+            cleanupObservers()
+        }
+    }
+    
+    // MARK: - Timer Event Listeners (NEW)
+    
+    @State private var washCycleObserver: NSObjectProtocol?
+    @State private var dryCycleObserver: NSObjectProtocol?
+    @State private var petUpdateObserver: NSObjectProtocol?
+    
+    /// Set up listeners for timer completion events
+    private func setupTimerEventListeners() {
+        // Listen for wash cycle completion
+        washCycleObserver = NotificationCenter.default.addObserver(
+            forName: TimerService.washCycleCompletedNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let petID = notification.userInfo?["petID"] as? UUID,
+               petID == pet.id {
+                handleWashCycleCompleted()
+            }
+        }
+        
+        // Listen for dry cycle completion
+        dryCycleObserver = NotificationCenter.default.addObserver(
+            forName: TimerService.dryCycleCompletedNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let petID = notification.userInfo?["petID"] as? UUID,
+               petID == pet.id {
+                handleDryCycleCompleted()
+            }
+        }
+        
+        // Listen for centralized pet updates
+        petUpdateObserver = NotificationCenter.default.addObserver(
+            forName: .petUpdateRequired,
+            object: nil,
+            queue: .main
+        ) { _ in
+            updateRemainingTime()
+        }
+    }
+    
+    /// Clean up notification observers
+    private func cleanupObservers() {
+        if let observer = washCycleObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = dryCycleObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = petUpdateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+    
+    /// Handle wash cycle completion event
+    private func handleWashCycleCompleted() {
+        print("🎉 PetDetailView: Wash cycle completed for \(pet.name)")
+        
+        // State update is now handled by PetStateManager
+        // Just update UI elements with smooth animation
+        withAnimation(.easeInOut(duration: 0.5)) {
+            updateRemainingTime()
+            animationScale = 0.95 // Slightly deflated when wet
+        }
+    }
+    
+    /// Handle dry cycle completion event
+    private func handleDryCycleCompleted() {
+        print("🎉 PetDetailView: Dry cycle completed for \(pet.name)")
+        
+        // State update is now handled by PetStateManager
+        // Just update UI elements with smooth animation
+        withAnimation(.easeInOut(duration: 0.5)) {
+            updateRemainingTime()
+            animationScale = 1.05 // Slightly bigger when ready to fold
         }
     }
     
@@ -292,8 +397,8 @@ struct PetDetailView: View {
     private func startTimerUpdates() {
         updateRemainingTime()
         
-        // Update every second if there's an active timer
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        // Start smooth timer updates every second
+        timerUpdateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             updateRemainingTime()
         }
     }
@@ -301,6 +406,8 @@ struct PetDetailView: View {
     private func stopTimerUpdates() {
         timer?.invalidate()
         timer = nil
+        timerUpdateTimer?.invalidate()
+        timerUpdateTimer = nil
     }
     
     private func updateRemainingTime() {
@@ -308,7 +415,35 @@ struct PetDetailView: View {
     }
     
     private func cancelTimer() {
+        let currentState = pet.currentState
+        print("❌ Cancelling timer for \(pet.name) in state: \(currentState)")
+        
+        // Cancel the timer
         timerService.cancelTimer(for: pet)
+        
+        // Move pet to appropriate state based on current state
+        // Use immediate state update to prevent stuck states
+        switch currentState {
+        case .washing:
+            // If cancelling wash, move to wetReady (assume wash completed)
+            pet.updateState(to: .wetReady, context: modelContext)
+            withAnimation(.easeInOut(duration: 0.3)) {
+                animationScale = 0.95 // Slightly deflated when wet
+            }
+            print("✅ Timer cancelled - moved from washing to wetReady")
+        case .drying:
+            // If cancelling dry, move to readyToFold (assume dry completed)
+            pet.updateState(to: .readyToFold, context: modelContext)
+            withAnimation(.easeInOut(duration: 0.3)) {
+                animationScale = 1.05 // Slightly bigger when ready to fold
+            }
+            print("✅ Timer cancelled - moved from drying to readyToFold")
+        default:
+            // For other states, just update timer display
+            print("✅ Timer cancelled - no state change needed")
+            break
+        }
+        
         updateRemainingTime()
         
         // Haptic feedback
@@ -368,7 +503,11 @@ struct PetDetailView: View {
     
     private var primaryActionForCurrentState: PetAction? {
         switch pet.currentState {
+        case .clean:
+            // Smaller button for early wash (not overdue)
+            return PetAction(text: "Start Wash", emoji: "🫧", action: .washing)
         case .dirty:
+            // Larger button for overdue wash
             return PetAction(text: "Start Wash Cycle", emoji: "🫧", action: .washing)
         case .wetReady:
             return PetAction(text: "Move to Dryer", emoji: "🌪️", action: .drying)
@@ -397,35 +536,52 @@ struct PetDetailView: View {
     private func performPrimaryAction() {
         guard primaryActionForCurrentState != nil else { return }
         
+        print("🎯 DetailView: Performing action for \(pet.name) in state: \(pet.currentState)")
+        
         switch pet.currentState {
-        case .dirty:
-            // Start wash cycle with SHORT timer for testing
+        case .clean:
+            // Start wash cycle early (no notifications for early wash)
             withAnimation(.easeInOut(duration: 0.3)) {
                 pet.updateState(to: .washing, context: modelContext)
             }
-            timerService.startWashTimer(for: pet, duration: 15) // 15 seconds for testing
+            timerService.startWashTimer(for: pet, sendNotifications: false) // No notifications for early wash
+            animationScale = 1.2 // Bouncy when washing
+            print("🫧 Early wash started for \(pet.name) - no notifications")
+            
+        case .dirty:
+            // Start wash cycle (overdue - with notifications)
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .washing, context: modelContext)
+            }
+            timerService.startWashTimer(for: pet, sendNotifications: true) // Notifications for overdue wash
+            animationScale = 1.2 // Bouncy when washing
+            print("🫧 Overdue wash started for \(pet.name) - notifications enabled")
             
         case .wetReady:
-            // Start dry cycle when user moves to dryer
+            // Start dry cycle using pet's individual dryTime setting
             withAnimation(.easeInOut(duration: 0.3)) {
                 pet.updateState(to: .drying, context: modelContext)
             }
-            timerService.startDryTimer(for: pet, duration: 15) // 15 seconds for testing
+            timerService.startDryTimer(for: pet) // Uses pet.dryTime setting
+            animationScale = 1.1 // Slightly bouncy when drying
             
         case .readyToFold:
             withAnimation(.easeInOut(duration: 0.3)) {
                 pet.updateState(to: .folded, context: modelContext)
             }
+            animationScale = 1.0 // Calm when folded
             
         case .folded:
             withAnimation(.easeInOut(duration: 0.3)) {
                 pet.updateState(to: .clean, context: modelContext)
             }
+            animationScale = 1.1 // Happy when clean
             
         case .abandoned:
             withAnimation(.easeInOut(duration: 0.3)) {
                 pet.updateState(to: .clean, context: modelContext)
             }
+            animationScale = 1.15 // Extra happy when rescued
             
         default:
             return
@@ -434,6 +590,8 @@ struct PetDetailView: View {
         // Haptic feedback
         let impact = UIImpactFeedbackGenerator(style: .medium)
         impact.impactOccurred()
+        
+        print("✅ DetailView: Action completed for \(pet.name)")
     }
     
     private func performSecondaryAction() {
@@ -466,7 +624,7 @@ struct PetDetailView: View {
     }
 }
 
-// MARK: - Pet Personality Messages
+// MARK: - Pet Personality Messages (Same as before)
 
 struct PetPersonality {
     static func message(for type: PetType, state: PetState) -> String {
@@ -504,6 +662,13 @@ struct PetPersonality {
                 "Fresh from the wash, ready for some heat! 🌪️"
             ]
             
+        case (.clothes, .drying):
+            return [
+                "Getting nice and toasty! 🔥",
+                "This warm air feels amazing! ☀️",
+                "Almost dry and ready for folding! 🌪️"
+            ]
+            
         case (.clothes, .readyToFold):
             return [
                 "I'm all done drying! Time to fold me up! 📚",
@@ -525,6 +690,13 @@ struct PetPersonality {
                 "Time for my spa day? 🛁"
             ]
             
+        case (.sheets, .washing):
+            return [
+                "Gentle cycle please... *yawn* 😴",
+                "This is so relaxing... 💤",
+                "Getting clean makes me sleepy... 🛁"
+            ]
+            
         case (.sheets, .wetReady):
             return [
                 "All clean and sleepy... time for the dryer! 💤",
@@ -544,6 +716,13 @@ struct PetPersonality {
                 "I'm not as absorbent as I used to be... 😔",
                 "Could really use a refresh! 💦",
                 "Help! I'm developing my own ecosystem! 🦠"
+            ]
+            
+        case (.towels, .washing):
+            return [
+                "Getting my fluffiness back! 💪",
+                "Wash away all the germs! 🫧",
+                "Maximum absorbency incoming! 🧽"
             ]
             
         case (.towels, .wetReady):

@@ -1,5 +1,5 @@
 //
-//  LaundryPet.swift (Updated for 5-Minute Happiness System)
+//  LaundryPet.swift (Rebuilt - Core Functionality)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -8,6 +8,20 @@
 import Foundation
 import SwiftData
 
+/**
+ * LAUNDRY PET MODEL (REBUILT)
+ * 
+ * Core model for individual laundry pets with complete workflow support.
+ * Each pet has individual timing settings and proper state management.
+ * 
+ * FEATURES:
+ * - Individual timing settings (wash frequency, wash time, dry time)
+ * - Complete state workflow with proper transitions
+ * - Dynamic happiness calculation based on state and time
+ * - Background persistence with SwiftData
+ * - Timer integration for automatic state transitions
+ */
+
 @Model
 final class LaundryPet {
     @Attribute(.unique) var id: UUID
@@ -15,10 +29,10 @@ final class LaundryPet {
     var name: String
     var currentState: PetState
     var lastWashDate: Date
-    var washFrequency: TimeInterval
-    var washTime: TimeInterval
-    var dryTime: TimeInterval
-    var happinessLevel: Int  // Still stored but now calculated dynamically
+    var washFrequency: TimeInterval  // How often pet gets dirty (individual setting)
+    var washTime: TimeInterval      // How long washing takes (individual setting)
+    var dryTime: TimeInterval        // How long drying takes (individual setting)
+    var happinessLevel: Int          // Calculated dynamically based on state and time
     var streakCount: Int
     var isActive: Bool
     var createdDate: Date
@@ -31,11 +45,10 @@ final class LaundryPet {
         self.type = type
         self.name = name ?? type.displayName
         self.currentState = .clean
-        // START AT FULL HAPPINESS - just washed
         self.lastWashDate = Date()
-        self.washFrequency = type.defaultFrequency // 5 minutes for all pets
-        self.washTime = type.defaultWashTime // 15 seconds
-        self.dryTime = type.defaultDryTime // 15 seconds
+        self.washFrequency = type.defaultFrequency  // Individual setting from PetType
+        self.washTime = type.defaultWashTime       // Individual setting from PetType
+        self.dryTime = type.defaultDryTime         // Individual setting from PetType
         self.happinessLevel = 100  // Start at full happiness
         self.streakCount = 0
         self.isActive = true
@@ -46,12 +59,12 @@ final class LaundryPet {
     /**
      * DYNAMIC HAPPINESS CALCULATION
      *
-     * 5-MINUTE HAPPINESS SYSTEM:
+     * HAPPINESS SYSTEM:
      * - Clean: 100 happiness (5 hearts)
      * - Washing: Always 2 hearts (shaking)
      * - Drying: Always 3 hearts (shaking)
      * - Folded: Always 4 hearts
-     * - Time-based decay: 100 → 0 over 5 minutes
+     * - Time-based decay: 100 → 0 over wash frequency period
      * - Overdue: 0 happiness (dead hearts)
      */
     var currentHappiness: Int {
@@ -80,12 +93,7 @@ final class LaundryPet {
      * CALCULATE TIME FACTOR FOR DIRTY PETS
      *
      * Returns happiness multiplier based on time since last wash:
-     * - 0 minutes: 1.0 (100% happiness - 5 hearts)
-     * - 1 minute: 0.8 (80% happiness - 4 hearts)
-     * - 2 minutes: 0.6 (60% happiness - 3 hearts)
-     * - 3 minutes: 0.4 (40% happiness - 2 hearts)
-     * - 4 minutes: 0.2 (20% happiness - 1 heart)
-     * - 5+ minutes: 0.0 (0% happiness - 0 hearts, dead!)
+     * Uses individual pet's washFrequency setting for decay calculation
      */
     private func calculateTimeFactor() -> Double {
         let timeSinceWash = Date().timeIntervalSince(lastWashDate)
@@ -96,7 +104,7 @@ final class LaundryPet {
             return 0.0
         }
         
-        // Linear decay over 5 minutes: 1.0 → 0.0
+        // Linear decay over pet's individual wash frequency: 1.0 → 0.0
         let progress = timeSinceWash / washFrequency
         return max(0.0, 1.0 - progress)
     }
@@ -115,7 +123,7 @@ final class LaundryPet {
     }
     
     /**
-     * UPDATE STATE (Enhanced with Happiness Management)
+     * UPDATE STATE (Enhanced with Proper State Management)
      */
     func updateState(to newState: PetState, context: ModelContext? = nil) {
         let oldState = currentState
@@ -125,22 +133,10 @@ final class LaundryPet {
         // Update stored happiness (will be overridden by currentHappiness calculation)
         happinessLevel = currentHappiness
         
-        // Handle automatic timer transitions
-        switch (oldState, newState) {
-        case (.washing, .drying):
-            TimerService.shared.startDryTimer(for: self, duration: dryTime)
-            
-        case (.drying, .readyToFold):
-            break // Dry cycle completed
-            
-        default:
-            break
-        }
-        
         // Track completed cycles for streak counting
         if oldState == .folded && newState == .clean {
             streakCount += 1
-            lastWashDate = Date() // Reset the wash timer to full 5 minutes
+            lastWashDate = Date() // Reset the wash timer to full frequency period
         }
         
         // Create activity log

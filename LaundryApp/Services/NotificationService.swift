@@ -82,7 +82,7 @@ extension NotificationService {
         ]
         
         let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: max(1, timeInterval), // At least 1 second
+            timeInterval: max(1.0, timeInterval), // At least 1 second
             repeats: false
         )
         
@@ -122,7 +122,7 @@ extension NotificationService {
         ]
         
         let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: max(1, timeInterval),
+            timeInterval: max(1.0, timeInterval),
             repeats: false
         )
         
@@ -144,9 +144,12 @@ extension NotificationService {
     func scheduleWashReminder(for pet: LaundryPet, in timeInterval: TimeInterval) async {
         guard notificationPermission == .authorized else { return }
         
+        // Ensure time interval is at least 1 second (UNTimeIntervalNotificationTrigger requirement)
+        let safeTimeInterval = max(1.0, timeInterval)
+        
         let content = UNMutableNotificationContent()
         content.title = "\(pet.type.emoji) \(pet.name)"
-        content.body = generateWashMessage(for: pet.type, isOverdue: false)
+        content.body = generateWashMessage(for: pet.type, isOverdue: timeInterval <= 0)
         content.sound = .default
         content.badge = NSNumber(value: await getBadgeCount() + 1)
         content.categoryIdentifier = "WASH_REMINDER"
@@ -158,7 +161,7 @@ extension NotificationService {
         ]
         
         let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: timeInterval,
+            timeInterval: safeTimeInterval,
             repeats: false
         )
         
@@ -170,7 +173,7 @@ extension NotificationService {
         
         do {
             try await notificationCenter.add(request)
-            print("📅 Scheduled wash reminder for \(pet.name)")
+            print("📅 Scheduled wash reminder for \(pet.name) in \(Int(safeTimeInterval)) seconds")
         } catch {
             print("❌ Failed to schedule wash reminder: \(error)")
         }
@@ -400,8 +403,7 @@ extension NotificationService {
     /// Handle notification actions (called from app delegate)
     func handleNotificationAction(identifier: String, userInfo: [AnyHashable: Any]) {
         guard let petIDString = userInfo["petID"] as? String,
-              let petID = UUID(uuidString: petIDString),
-              let actionType = userInfo["actionType"] as? String else {
+              let petID = UUID(uuidString: petIDString) else {
             print("❌ Invalid notification userInfo")
             return
         }

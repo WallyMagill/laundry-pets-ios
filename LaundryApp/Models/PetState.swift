@@ -14,7 +14,7 @@ import Foundation
  * This is the core of our gamification system - pets move through these states
  * as users complete real-world laundry tasks.
  * 
- * STATE FLOW:
+ * COMPLETE STATE FLOW:
  * clean → dirty → washing → wetReady → drying → readyToFold → folded → clean
  * 
  * DESIGN PRINCIPLES:
@@ -30,6 +30,10 @@ import Foundation
  * - readyToFold → folded: "Fold Me!"
  * - folded → clean: "Put Away"
  * - abandoned → clean: "Rescue Me!"
+ * 
+ * AUTOMATIC TRANSITIONS (via timers):
+ * - washing → wetReady: Timer completes
+ * - drying → readyToFold: Timer completes
  */
 
 /// Represents the current state of a laundry pet through the complete wash cycle
@@ -72,11 +76,11 @@ enum PetState: String, CaseIterable, Codable, Sendable {
      * - Displaying action buttons
      * 
      * AUTOMATIC STATES (no action needed):
-     * - clean: Pet is happy, no action required
      * - washing: Timer is running, user waits
      * - drying: Timer is running, user waits
      * 
      * ACTION REQUIRED STATES:
+     * - clean: User can start wash cycle early
      * - dirty: User must start wash cycle
      * - wetReady: User must move to dryer
      * - readyToFold: User must fold clothes
@@ -85,8 +89,8 @@ enum PetState: String, CaseIterable, Codable, Sendable {
      */
     var requiresAction: Bool {
         switch self {
-        case .clean, .washing, .drying: return false
-        case .dirty, .wetReady, .readyToFold, .folded, .abandoned: return true
+        case .washing, .drying: return false
+        case .clean, .dirty, .wetReady, .readyToFold, .folded, .abandoned: return true
         }
     }
     
@@ -98,6 +102,7 @@ enum PetState: String, CaseIterable, Codable, Sendable {
      */
     var primaryActionText: String? {
         switch self {
+        case .clean: return "Start Wash"
         case .dirty: return "Start Wash"
         case .wetReady: return "Move to Dryer"
         case .readyToFold: return "Fold Me!"

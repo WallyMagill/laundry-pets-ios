@@ -1,5 +1,5 @@
 //
-//  PetCardView.swift (Final Clean Version)
+//  PetCardView.swift (Fixed - Timer Event Handling)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -8,7 +8,7 @@
 import SwiftUI
 import SwiftData
 
-/// Individual pet card component with timer support for the main dashboard
+/// Individual pet card component with timer support and event handling
 struct PetCardView: View {
     @Environment(\.modelContext) private var modelContext
     
@@ -127,7 +127,7 @@ struct PetCardView: View {
                 }
             }
             
-            // Action Button or Navigation Hint
+            // Action Button
             if showActionButton {
                 if timerService.hasActiveTimer(for: pet) {
                     // Show timer controls instead of action button
@@ -166,6 +166,22 @@ struct PetCardView: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
+                } else {
+                    // Show status when no action needed
+                    HStack {
+                        Text("All good! ✨")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                        
+                        Spacer()
+                        
+                        if pet.currentState == .clean {
+                            Text(nextWashString(for: pet))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.top, 4)
                 }
             } else {
                 // Navigation hint
@@ -199,11 +215,93 @@ struct PetCardView: View {
         .animation(.easeInOut(duration: 0.3), value: pet.needsAttention)
         .animation(.easeInOut(duration: 0.3), value: remainingTime)
         .onAppear {
+            print("🔍 PetCardView: \(pet.name) - showActionButton: \(showActionButton), hasActiveTimer: \(timerService.hasActiveTimer(for: pet)), needsAttention: \(pet.needsAttention), state: \(pet.currentState)")
             startTimerUpdates()
+            setupTimerEventListeners()
+            setupStateChangeListener()
         }
         .onDisappear {
             stopTimerUpdates()
         }
+    }
+    
+    // MARK: - State Change Listener
+    
+    /// Set up listener for pet state changes to refresh UI
+    private func setupStateChangeListener() {
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("PetStateChanged"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let petID = notification.userInfo?["petID"] as? UUID,
+               petID == pet.id {
+                print("🔄 PetCardView: Pet state changed, refreshing UI for \(pet.name)")
+                // Force UI refresh by updating remaining time
+                updateRemainingTime()
+                // Force a UI refresh by invalidating and restarting timer
+                stopTimerUpdates()
+                startTimerUpdates()
+            }
+        }
+    }
+    
+    // MARK: - Timer Event Listeners (NEW)
+    
+    /// Set up listeners for timer completion events
+    private func setupTimerEventListeners() {
+        // Listen for wash cycle completion
+        NotificationCenter.default.addObserver(
+            forName: TimerService.washCycleCompletedNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let petID = notification.userInfo?["petID"] as? UUID,
+               petID == pet.id {
+                handleWashCycleCompleted()
+            }
+        }
+        
+        // Listen for dry cycle completion
+        NotificationCenter.default.addObserver(
+            forName: TimerService.dryCycleCompletedNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let petID = notification.userInfo?["petID"] as? UUID,
+               petID == pet.id {
+                handleDryCycleCompleted()
+            }
+        }
+    }
+    
+    /// Handle wash cycle completion event
+    private func handleWashCycleCompleted() {
+        print("🎉 PetCardView: Wash cycle completed for \(pet.name)")
+        
+        withAnimation(.easeInOut(duration: 0.5)) {
+            pet.updateState(to: .wetReady, context: modelContext)
+        }
+        
+        // Schedule dryer reminder notification
+        Task {
+            await NotificationService.shared.scheduleDryerReminder(for: pet, in: 1.0) // 1 second delay for immediate notification
+        }
+        
+        // Update timer display
+        updateRemainingTime()
+    }
+    
+    /// Handle dry cycle completion event
+    private func handleDryCycleCompleted() {
+        print("🎉 PetCardView: Dry cycle completed for \(pet.name)")
+        
+        withAnimation(.easeInOut(duration: 0.5)) {
+            pet.updateState(to: .readyToFold, context: modelContext)
+        }
+        
+        // Update timer display
+        updateRemainingTime()
     }
     
     // MARK: - Timer Management
@@ -332,128 +430,66 @@ struct PetCardView: View {
         let timeUntil = pet.timeUntilDirty
         
         if timeUntil < 0 {
-            let overdue = Int(abs(timeUntil) / 3600)
-            return "Overdue \(overdue)h"
-        } else if timeUntil < 86400 {
-            let hours = Int(timeUntil / 3600)
-            return hours == 0 ? "Now!" : "In \(hours)h"
+            let overdue = Int(abs(timeUntil) / 60) // Show in minutes
+            return "Overdue \(overdue)m"
+        } else if timeUntil < 3600 {
+            let minutes = Int(timeUntil / 60)
+            return minutes == 0 ? "Now!" : "In \(minutes)m"
         } else {
-            let days = Int(timeUntil / 86400)
-            return "In \(days)d"
+            let hours = Int(timeUntil / 3600)
+            return "In \(hours)h"
         }
     }
     
     // MARK: - Actions
     
     private func performPetAction() {
-        let nextState: PetState
+        print("🎯 PetCardView: \(pet.name) needs attention, state: \(pet.currentState), actionText: \(pet.currentState.primaryActionText ?? "nil")")
+        print("🎯 Performing action for \(pet.name) in state: \(pet.currentState)")
         
         switch pet.currentState {
-        case .dirty:
-            nextState = .washing
-            // Start wash timer with SHORT duration for testing
-            timerService.startWashTimer(for: pet, duration: 10) // 10 seconds instead of 45 minutes
+        case .dirty, .abandoned:
+            // Start wash cycle with timer integration
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .washing, context: modelContext)
+            }
+            // Start wash timer - SHORT duration for testing
+            timerService.startWashTimer(for: pet, duration: 15) // 15 seconds
             
         case .wetReady:
-            nextState = .drying
-            // Start dry timer when user moves clothes to dryer
-            timerService.startDryTimer(for: pet, duration: 15) // 15 seconds instead of 60 minutes
+            // Move to dryer and start dry timer
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .drying, context: modelContext)
+            }
+            // Start dry timer - SHORT duration for testing
+            timerService.startDryTimer(for: pet, duration: 15) // 15 seconds
             
         case .readyToFold:
-            nextState = .folded
+            // Mark as folded
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .folded, context: modelContext)
+            }
+            
         case .folded:
-            nextState = .clean
-        case .abandoned:
-            nextState = .clean
+            // Complete cycle - put away
+            withAnimation(.easeInOut(duration: 0.3)) {
+                pet.updateState(to: .clean, context: modelContext)
+            }
+            
         default:
-            return // No action needed
+            print("⚠️ No action available for state: \(pet.currentState)")
+            return
         }
         
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-            pet.updateState(to: nextState, context: modelContext)
-        }
-        
-        // Haptic feedback
+        // Provide haptic feedback
         let impact = UIImpactFeedbackGenerator(style: .medium)
         impact.impactOccurred()
         
-        print("✅ \(pet.name) action performed: \(pet.currentState.displayName)")
+        print("✅ Action completed for \(pet.name)")
     }
 }
 
-// MARK: - Supporting Views
-
-/// Displays timer countdown in a badge format
-struct TimerBadgeView: View {
-    let timeRemaining: TimeInterval
-    let timerType: String
-    
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(formatTime(timeRemaining))
-                .font(.caption)
-                .fontWeight(.bold)
-                .monospacedDigit()
-            
-            Text(timerType)
-                .font(.caption2)
-                .fontWeight(.medium)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(.blue.opacity(0.2))
-        .foregroundColor(.blue)
-        .cornerRadius(8)
-    }
-    
-    private func formatTime(_ timeInterval: TimeInterval) -> String {
-        let minutes = Int(timeInterval / 60)
-        let seconds = Int(timeInterval.truncatingRemainder(dividingBy: 60))
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-}
-
-/// Displays current pet state in a badge format
-struct StatusBadgeView: View {
-    let state: PetState
-    
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(state.emoji)
-                .font(.caption)
-            Text(state.displayName)
-                .font(.caption)
-                .fontWeight(.medium)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(backgroundColorForState(state))
-        .foregroundColor(textColorForState(state))
-        .cornerRadius(12)
-    }
-    
-    private func backgroundColorForState(_ state: PetState) -> Color {
-        switch state {
-        case .clean: return .green.opacity(0.2)
-        case .dirty: return .orange.opacity(0.2)
-        case .washing, .drying: return .blue.opacity(0.2)
-        case .wetReady: return .cyan.opacity(0.2)
-        case .readyToFold, .folded: return .purple.opacity(0.2)
-        case .abandoned: return .red.opacity(0.2)
-        }
-    }
-    
-    private func textColorForState(_ state: PetState) -> Color {
-        switch state {
-        case .clean: return .green
-        case .dirty: return .orange
-        case .washing, .drying: return .blue
-        case .wetReady: return .cyan
-        case .readyToFold, .folded: return .purple
-        case .abandoned: return .red
-        }
-    }
-}
+// MARK: - Supporting Views (Moved to OptimizedPetCardView.swift)
 
 /// Shows detailed timer information with controls
 struct ActiveTimerView: View {
@@ -523,5 +559,3 @@ struct ActiveTimerView: View {
         }
     }
 }
-
-// HappinessIndicator is imported from HappinessIndicator.swift

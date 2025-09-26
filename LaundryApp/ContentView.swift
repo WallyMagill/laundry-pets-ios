@@ -1,5 +1,5 @@
 //
-//  ContentView.swift (Fixed - No Long Press, All Quick Actions)
+//  ContentView.swift (Rebuilt - Core Functionality)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -8,9 +8,27 @@
 import SwiftUI
 import SwiftData
 
+/**
+ * CONTENT VIEW (REBUILT)
+ * 
+ * Main view displaying all pets with proper timer integration.
+ * Shows complete workflow status and handles state management.
+ * 
+ * FEATURES:
+ * - All pets displayed with current status
+ * - Timer countdown visible for active processes
+ * - Proper state management integration
+ * - Emergency unstuck functionality
+ * - Clean UI with no excessive logging
+ */
+
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var pets: [LaundryPet]
+    
+    // Centralized managers
+    private let timerManager = PetTimerManager.shared
+    private let stateManager = PetStateManager.shared
     
     var body: some View {
         NavigationStack {
@@ -70,16 +88,19 @@ struct ContentView: View {
                 ScrollView {
                     LazyVStack(spacing: 16) {
                         ForEach(pets.sorted(by: { first, second in
-                            if first.needsAttention && !second.needsAttention {
-                                return true
-                            } else if !first.needsAttention && second.needsAttention {
-                                return false
+                            // Priority order: dirty → washing → drying → readyToFold → folded → clean
+                            let firstPriority = priorityForState(first.currentState)
+                            let secondPriority = priorityForState(second.currentState)
+                            
+                            if firstPriority != secondPriority {
+                                return firstPriority < secondPriority
                             } else {
+                                // If same priority, sort by type
                                 return first.type.rawValue < second.type.rawValue
                             }
                         }), id: \.id) { pet in
                             NavigationLink(destination: PetDetailView(pet: pet)) {
-                                PetCardView(pet: pet, showActionButton: false)
+                                OptimizedPetCardView(pet: pet)
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
@@ -88,53 +109,6 @@ struct ContentView: View {
                     .padding(.top, 8)
                 }
                 .background(Color(.systemGroupedBackground))
-                
-                // FIXED QUICK ACTION BAR - SHOWS ALL ACTIONS
-                if petsNeedingAttention > 0 {
-                    VStack {
-                        Divider()
-                        
-                        VStack(spacing: 12) {
-                            Text("Quick Actions:")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            // SCROLLABLE HORIZONTAL STACK FOR ALL QUICK ACTIONS
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 12) {
-                                    ForEach(petsRequiringAction, id: \.id) { pet in
-                                        Button(action: { performQuickAction(for: pet) }) {
-                                            VStack(spacing: 6) {
-                                                Text(pet.type.emoji)
-                                                    .font(.title2)
-                                                
-                                                Text(pet.name)
-                                                    .font(.caption2)
-                                                    .fontWeight(.medium)
-                                                    .lineLimit(1)
-                                                
-                                                Text(quickActionText(for: pet))
-                                                    .font(.caption)
-                                                    .fontWeight(.semibold)
-                                                    .lineLimit(1)
-                                            }
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 12)
-                                            .frame(minWidth: 80)
-                                            .background(colorForPetType(pet.type))
-                                            .foregroundColor(.white)
-                                            .cornerRadius(16)
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal, 20)
-                            }
-                        }
-                        .padding(.vertical, 12)
-                    }
-                    .background(Color(.systemBackground))
-                }
             }
             .background(Color(.systemGroupedBackground))
             .navigationBarHidden(true)
@@ -143,8 +117,12 @@ struct ContentView: View {
             if pets.isEmpty {
                 createDefaultPets()
             }
+            setupManagers()
+            stateManager.unstuckAllPets(pets) // Unstuck any pets that might be stuck
         }
-        // REMOVED: Long press gesture
+        .onDisappear {
+            timerManager.stopAllTimers()
+        }
     }
     
     // MARK: - Computed Properties
@@ -163,11 +141,32 @@ struct ContentView: View {
         pets.filter { $0.needsAttention }.count
     }
     
-    private var petsRequiringAction: [LaundryPet] {
-        pets.filter { $0.needsAttention }
+    // MARK: - Manager Setup
+    
+    private func setupManagers() {
+        stateManager.setModelContext(modelContext)
+        timerManager.startTimer()
+        
+        // Add all pets to update tracking
+        for pet in pets {
+            timerManager.addPetToUpdates(pet.id)
+        }
     }
     
     // MARK: - Helper Methods
+    
+    private func priorityForState(_ state: PetState) -> Int {
+        switch state {
+        case .dirty: return 1        // Highest priority
+        case .washing: return 2      // Second priority
+        case .drying: return 3      // Third priority
+        case .readyToFold: return 4  // Fourth priority
+        case .folded: return 5      // Fifth priority
+        case .clean: return 6       // Lowest priority
+        case .abandoned: return 0    // Emergency priority
+        case .wetReady: return 2     // Same as washing
+        }
+    }
     
     private func colorForPetType(_ type: PetType) -> Color {
         switch type {
@@ -178,100 +177,25 @@ struct ContentView: View {
     }
     
     /**
-     * QUICK ACTION TEXT
-     *
-     * Returns appropriate action text for each pet state
-     */
-    private func quickActionText(for pet: LaundryPet) -> String {
-        switch pet.currentState {
-        case .dirty: return "Wash"
-        case .wetReady: return "Dry"
-        case .readyToFold: return "Fold"
-        case .folded: return "Put Away"
-        case .abandoned: return "Rescue"
-        default: return "Help"
-        }
-    }
-    
-    /**
-     * QUICK ACTION PERFORMER
-     *
-     * Handles ALL pet states and integrates with TimerService properly
-     */
-    private func performQuickAction(for pet: LaundryPet) {
-        print("🎯 Performing quick action for \(pet.name) in state: \(pet.currentState)")
-        
-        switch pet.currentState {
-        case .dirty, .abandoned:
-            // Start wash cycle with timer integration
-            withAnimation(.easeInOut(duration: 0.3)) {
-                pet.updateState(to: .washing, context: modelContext)
-            }
-            // Start wash timer - using short duration for testing
-            TimerService.shared.startWashTimer(for: pet, duration: 15) // 15 seconds for testing
-            
-        case .wetReady:
-            // Move to dryer and start dry timer
-            withAnimation(.easeInOut(duration: 0.3)) {
-                pet.updateState(to: .drying, context: modelContext)
-            }
-            // Start dry timer - using short duration for testing
-            TimerService.shared.startDryTimer(for: pet, duration: 15) // 15 seconds for testing
-            
-        case .readyToFold:
-            // Mark as folded
-            withAnimation(.easeInOut(duration: 0.3)) {
-                pet.updateState(to: .folded, context: modelContext)
-            }
-            
-        case .folded:
-            // Complete cycle - put away
-            withAnimation(.easeInOut(duration: 0.3)) {
-                pet.updateState(to: .clean, context: modelContext)
-            }
-            
-        default:
-            print("⚠️ No quick action available for state: \(pet.currentState)")
-            return
-        }
-        
-        // Provide haptic feedback
-        let impact = UIImpactFeedbackGenerator(style: .medium)
-        impact.impactOccurred()
-        
-        print("✅ Quick action completed for \(pet.name)")
-    }
-    
-    /**
      * CREATE DEFAULT PETS
      *
-     * All pets start at FULL HAPPINESS (5 hearts)
-     * Time until dirty: 5 minutes for all pets
+     * All pets start clean with individual timing settings from PetType
      */
     private func createDefaultPets() {
-        print("🐾 Creating default pets - all starting at full happiness...")
+        print("🐾 Creating default pets with individual timing settings...")
         
         let clothesBuddy = LaundryPet(type: .clothes)
         let sheetSpirit = LaundryPet(type: .sheets)
         let towelPal = LaundryPet(type: .towels)
         
-        // ALL PETS START CLEAN AND HAPPY
-        clothesBuddy.updateState(to: .clean, context: modelContext)
-        sheetSpirit.updateState(to: .clean, context: modelContext)
-        towelPal.updateState(to: .clean, context: modelContext)
-        
-        // Set last wash to now so they have full 5 minutes before getting dirty
-        clothesBuddy.lastWashDate = Date()
-        sheetSpirit.lastWashDate = Date()
-        towelPal.lastWashDate = Date()
-        
+        // Pets are already initialized as clean with proper timing settings
         modelContext.insert(clothesBuddy)
         modelContext.insert(sheetSpirit)
         modelContext.insert(towelPal)
         
         do {
             try modelContext.save()
-            print("✨ Default pets created - all at full happiness for 5 minutes!")
+            print("✨ Default pets created with individual settings!")
         } catch {
             print("❌ Error creating default pets: \(error)")
         }

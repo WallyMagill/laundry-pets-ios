@@ -1,5 +1,5 @@
 //
-//  TimerService.swift
+//  TimerService.swift (Rebuilt - Core Functionality)
 //  LaundryApp
 //
 //  Created by Walter Magill on 9/24/25.
@@ -8,39 +8,19 @@
 import Foundation
 import SwiftUI
 import UserNotifications
+import SwiftData
 
 /**
- * TIMER SERVICE
+ * TIMER SERVICE (REBUILT)
+ *
+ * Core timer management with individual pet settings and background persistence.
  * 
- * Manages wash and dry cycle timers with background persistence.
- * This is a critical service that handles the automatic progression
- * of pets through the laundry cycle.
- * 
- * KEY RESPONSIBILITIES:
- * 1. Start/stop wash and dry cycle timers
- * 2. Persist timer data across app launches
- * 3. Handle app backgrounding/foregrounding
- * 4. Automatically update pet states when timers complete
- * 5. Cancel timers when needed
- * 
- * ARCHITECTURE:
- * - Singleton pattern (shared instance)
- * - In-memory timers for active counting
- * - UserDefaults persistence for background survival
- * - App lifecycle observers for state management
- * 
- * TIMER FLOW:
- * 1. User starts wash → TimerService.startWashTimer()
- * 2. Timer counts down (45 minutes default)
- * 3. Timer completes → Pet state changes to .wetReady
- * 4. User moves to dryer → TimerService.startDryTimer()
- * 5. Timer counts down (60 minutes default)
- * 6. Timer completes → Pet state changes to .readyToFold
- * 
- * BACKGROUND PERSISTENCE:
- * - Timers are saved to UserDefaults when app backgrounds
- * - Timers are restored when app becomes active
- * - Expired timers are handled appropriately
+ * FEATURES:
+ * - Individual pet timing settings (washTime, dryTime)
+ * - Background persistence and restoration
+ * - NotificationCenter communication with UI
+ * - Proper timer cleanup and state management
+ * - No direct pet updates (UI handles state transitions)
  */
 
 /// Manages wash/dry cycle timers with background persistence
@@ -54,43 +34,47 @@ class TimerService {
     // Timer data persistence keys for UserDefaults
     private let timerDataKey = "ActiveTimerData"
     
-    /**
-     * INITIALIZER
-     * 
-     * Sets up the timer service with:
-     * 1. Restoration of any persisted timers
-     * 2. App lifecycle observers for background/foreground handling
-     */
+    // Notification names for timer completion events
+    static let washCycleCompletedNotification = Notification.Name("washCycleCompleted")
+    static let dryCycleCompletedNotification = Notification.Name("dryCycleCompleted")
+    
+    private var backgroundObserver: NSObjectProtocol?
+    private var activeObserver: NSObjectProtocol?
+    
     private init() {
         // Restore any timers that were running when app was backgrounded
         restoreTimersFromBackground()
         
-        // Listen for app lifecycle events to handle backgrounding
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appWillEnterBackground),
-            name: UIApplication.willResignActiveNotification,
-            object: nil
-        )
+        // Listen for app lifecycle events
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.appWillEnterBackground()
+        }
         
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appDidBecomeActive),
-            name: UIApplication.didBecomeActiveNotification,
-            object: nil
-        )
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.appDidBecomeActive()
+        }
     }
     
-    /**
-     * DEINITIALIZER
-     * 
-     * Cleanup when service is deallocated:
-     * 1. Remove notification observers
-     * 2. Invalidate all active timers
-     */
     deinit {
-        NotificationCenter.default.removeObserver(self)
+        cleanupObservers()
         activeTimers.values.forEach { $0.invalidate() }
+    }
+    
+    private func cleanupObservers() {
+        if let observer = backgroundObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = activeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 }
 
@@ -98,86 +82,87 @@ class TimerService {
 
 extension TimerService {
     
-    /**
-     * START WASH TIMER
-     * 
-     * Starts a wash cycle timer for the specified pet.
-     * When the timer completes, the pet's state will automatically
-     * change to .wetReady (requiring user to move to dryer).
-     * 
-     * PROCESS:
-     * 1. Cancel any existing timer for this pet
-     * 2. Create timer data and save to UserDefaults
-     * 3. Start in-memory timer
-     * 4. Log the timer start
-     */
-    func startWashTimer(for pet: LaundryPet, duration: TimeInterval = 2700) { // 45 minutes default
-        cancelTimer(for: pet) // Cancel any existing timer
-        
-        let endTime = Date().addingTimeInterval(duration)
-        let timerData = TimerData(
-            petID: pet.id,
-            type: .wash,
-            startTime: Date(),
-            endTime: endTime,
-            petType: pet.type
-        )
-        
-        // Save to persistent storage for background survival
-        saveTimerData(timerData)
-        
-        // Create in-memory timer that will complete the wash cycle
-        let timer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
-            self?.washCycleCompleted(for: pet)
+    /// Start wash timer - uses individual pet settings and posts notification when complete
+    func startWashTimer(for pet: LaundryPet, duration: TimeInterval? = nil, sendNotifications: Bool = true) {
+        do {
+            let actualDuration = duration ?? pet.washTime // Use pet's individual washTime setting
+            
+            // Validate duration
+            guard actualDuration > 0 else {
+                print("❌ Invalid wash duration: \(actualDuration) seconds for \(pet.name)")
+                return
+            }
+            
+            // Cancel any existing timer
+            cancelTimer(for: pet)
+            
+            let endTime = Date().addingTimeInterval(actualDuration)
+            let timerData = TimerData(
+                petID: pet.id,
+                type: .wash,
+                startTime: Date(),
+                endTime: endTime,
+                petType: pet.type
+            )
+            
+            // Save to persistent storage for background survival
+            saveTimerData(timerData)
+            
+            // Create in-memory timer that will post notification when complete
+            let timer = Timer.scheduledTimer(withTimeInterval: actualDuration, repeats: false) { [weak self] _ in
+                self?.washCycleCompleted(petID: pet.id)
+            }
+            
+            activeTimers[pet.id] = timer
+            
+            print("🫧 Started wash timer for \(pet.name) - will complete in \(Int(actualDuration)) seconds (using pet.washTime: \(pet.washTime)s)")
+        } catch {
+            print("❌ Error starting wash timer for \(pet.name): \(error)")
         }
-        
-        activeTimers[pet.id] = timer
-        
-        print("🫧 Started wash timer for \(pet.name) - will complete at \(endTime.formatted(.dateTime.hour().minute()))")
     }
     
-    /**
-     * START DRY TIMER
-     * 
-     * Starts a dry cycle timer for the specified pet.
-     * When the timer completes, the pet's state will automatically
-     * change to .readyToFold (requiring user to fold clothes).
-     * 
-     * PROCESS:
-     * 1. Cancel any existing timer for this pet
-     * 2. Create timer data and save to UserDefaults
-     * 3. Start in-memory timer
-     * 4. Schedule fold reminder notification
-     * 5. Log the timer start
-     */
-    func startDryTimer(for pet: LaundryPet, duration: TimeInterval = 3600) { // 60 minutes default
-        cancelTimer(for: pet) // Cancel any existing timer
-        
-        let endTime = Date().addingTimeInterval(duration)
-        let timerData = TimerData(
-            petID: pet.id,
-            type: .dry,
-            startTime: Date(),
-            endTime: endTime,
-            petType: pet.type
-        )
-        
-        // Save to persistent storage for background survival
-        saveTimerData(timerData)
-        
-        // Create in-memory timer that will complete the dry cycle
-        let timer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
-            self?.dryCycleCompleted(for: pet)
+    /// Start dry timer - uses individual pet settings and posts notification when complete
+    func startDryTimer(for pet: LaundryPet, duration: TimeInterval? = nil) {
+        do {
+            let actualDuration = duration ?? pet.dryTime // Use pet's individual dryTime setting
+            
+            // Validate duration
+            guard actualDuration > 0 else {
+                print("❌ Invalid dry duration: \(actualDuration) seconds for \(pet.name)")
+                return
+            }
+            
+            // Cancel any existing timer
+            cancelTimer(for: pet)
+            
+            let endTime = Date().addingTimeInterval(actualDuration)
+            let timerData = TimerData(
+                petID: pet.id,
+                type: .dry,
+                startTime: Date(),
+                endTime: endTime,
+                petType: pet.type
+            )
+            
+            // Save to persistent storage
+            saveTimerData(timerData)
+            
+            // Create in-memory timer
+            let timer = Timer.scheduledTimer(withTimeInterval: actualDuration, repeats: false) { [weak self] _ in
+                self?.dryCycleCompleted(petID: pet.id)
+            }
+            
+            activeTimers[pet.id] = timer
+            
+            // Schedule notification for when drying is complete
+            Task {
+                await NotificationService.shared.scheduleFoldReminder(for: pet, in: actualDuration)
+            }
+            
+            print("🌪️ Started dry timer for \(pet.name) - will complete in \(Int(actualDuration)) seconds (using pet.dryTime: \(pet.dryTime)s)")
+        } catch {
+            print("❌ Error starting dry timer for \(pet.name): \(error)")
         }
-        
-        activeTimers[pet.id] = timer
-        
-        // Schedule notification for when drying is complete
-        Task {
-            await NotificationService.shared.scheduleFoldReminder(for: pet, in: duration)
-        }
-        
-        print("🌪️ Started dry timer for \(pet.name) - will complete at \(endTime.formatted(.dateTime.hour().minute()))")
     }
     
     /// Cancel any active timer for the specified pet
@@ -212,49 +197,99 @@ extension TimerService {
         return getTimerData(for: pet.id) != nil && getRemainingTime(for: pet) != nil
     }
     
-    /// Get all active timer data for UI display
-    func getActiveTimerData() -> [String] {
-        return getAllTimerData().filter { $0.endTime > Date() }.map { $0.petID.uuidString }
+    /// Get timer progress (0.0 to 1.0)
+    func getTimerProgress(for pet: LaundryPet) -> Double? {
+        guard let timerData = getTimerData(for: pet.id) else { return nil }
+        
+        let totalDuration = timerData.endTime.timeIntervalSince(timerData.startTime)
+        let elapsed = Date().timeIntervalSince(timerData.startTime)
+        
+        return min(1.0, max(0.0, elapsed / totalDuration))
+    }
+    
+    /// Get timer start time for display
+    func getTimerStartTime(for pet: LaundryPet) -> Date? {
+        return getTimerData(for: pet.id)?.startTime
+    }
+    
+    /// Format time remaining for display
+    func formatRemainingTime(_ timeInterval: TimeInterval) -> String {
+        let minutes = Int(timeInterval / 60)
+        let seconds = Int(timeInterval.truncatingRemainder(dividingBy: 60))
+        
+        if minutes > 0 {
+            return String(format: "%d:%02d", minutes, seconds)
+        } else {
+            return String(format: ":%02d", seconds)
+        }
+    }
+    
+    /// Get timer type for display
+    func getTimerType(for pet: LaundryPet) -> String? {
+        guard let timerData = getTimerData(for: pet.id) else { return nil }
+        
+        switch timerData.type {
+        case .wash: return "Washing"
+        case .dry: return "Drying"
+        }
+    }
+    
+    /// Debug method to verify pet settings are being used
+    func debugPetSettings(for pet: LaundryPet) {
+        print("🔍 Pet Settings Debug for \(pet.name):")
+        print("   - washTime: \(pet.washTime) seconds")
+        print("   - dryTime: \(pet.dryTime) seconds")
+        print("   - washFrequency: \(pet.washFrequency) seconds")
+        print("   - currentState: \(pet.currentState)")
+        print("   - hasActiveTimer: \(hasActiveTimer(for: pet))")
+        if let remaining = getRemainingTime(for: pet) {
+            print("   - remainingTime: \(remaining) seconds")
+        }
     }
 }
 
-// MARK: - Timer Completion Handlers
+// MARK: - Timer Completion Handlers (Fixed)
 
 private extension TimerService {
     
-    func washCycleCompleted(for pet: LaundryPet) {
-        print("✅ Wash cycle completed for \(pet.name)")
+    /// Post notification that wash cycle completed - UI will handle the state update
+    func washCycleCompleted(petID: UUID) {
+        print("✅ Wash cycle completed for pet: \(petID)")
         
-        // Update pet state to wet and ready for dryer - requires user action
+        // Clean up timer data
+        activeTimers.removeValue(forKey: petID)
+        removeTimerData(for: petID)
+        
+        // Post notification for UI to handle
         DispatchQueue.main.async {
-            pet.updateState(to: .wetReady) // User must manually move to dryer
-        }
-        
-        // Clean up wash timer
-        activeTimers.removeValue(forKey: pet.id)
-        removeTimerData(for: pet.id)
-        
-        // Schedule notification to move to dryer
-        Task {
-            await NotificationService.shared.scheduleDryerReminder(for: pet, in: 0) // Immediate
+            NotificationCenter.default.post(
+                name: TimerService.washCycleCompletedNotification,
+                object: nil,
+                userInfo: ["petID": petID]
+            )
         }
     }
     
-    func dryCycleCompleted(for pet: LaundryPet) {
-        print("✅ Dry cycle completed for \(pet.name)")
+    /// Post notification that dry cycle completed - UI will handle the state update
+    func dryCycleCompleted(petID: UUID) {
+        print("✅ Dry cycle completed for pet: \(petID)")
         
-        // Update pet state to ready to fold
+        // Clean up timer data
+        activeTimers.removeValue(forKey: petID)
+        removeTimerData(for: petID)
+        
+        // Post notification for UI to handle
         DispatchQueue.main.async {
-            pet.updateState(to: .readyToFold)
+            NotificationCenter.default.post(
+                name: TimerService.dryCycleCompletedNotification,
+                object: nil,
+                userInfo: ["petID": petID]
+            )
         }
-        
-        // Clean up
-        activeTimers.removeValue(forKey: pet.id)
-        removeTimerData(for: pet.id)
     }
 }
 
-// MARK: - Background Persistence
+// MARK: - Background Persistence (Same as before)
 
 extension TimerService {
     
@@ -272,14 +307,9 @@ extension TimerService {
     
     func saveTimerData(_ timerData: TimerData) {
         var allTimerData = getAllTimerData()
-        
-        // Remove any existing timer for this pet
         allTimerData.removeAll { $0.petID == timerData.petID }
-        
-        // Add new timer data
         allTimerData.append(timerData)
         
-        // Save to UserDefaults
         if let encoded = try? JSONEncoder().encode(allTimerData) {
             UserDefaults.standard.set(encoded, forKey: timerDataKey)
         }
@@ -311,12 +341,11 @@ extension TimerService {
 
 extension TimerService {
     
-    @objc private func appWillEnterBackground() {
-        print("📱 App entering background - timers will continue via UserDefaults persistence")
-        // Timers will be invalidated, but data is saved in UserDefaults
+    private func appWillEnterBackground() {
+        print("📱 App entering background - timers saved to UserDefaults")
     }
     
-    @objc private func appDidBecomeActive() {
+    private func appDidBecomeActive() {
         print("📱 App became active - restoring timers")
         restoreTimersFromBackground()
     }
@@ -334,81 +363,48 @@ extension TimerService {
             } else {
                 // Timer still active, recreate it
                 let remainingTime = timerData.endTime.timeIntervalSince(now)
-                print("⏰ Restoring timer with \(Int(remainingTime / 60)) minutes remaining")
+                print("⏰ Restoring timer with \(Int(remainingTime)) seconds remaining")
                 recreateTimer(timerData, remainingTime: remainingTime)
             }
         }
     }
     
     private func handleExpiredTimer(_ timerData: TimerData) {
-        // Find the pet (this would need access to SwiftData context)
-        // For now, just clean up the timer data
+        // Clean up timer data
         removeTimerData(for: timerData.petID)
         
-        // Note: In a real implementation, you'd need to:
-        // 1. Update the pet's state based on timer type
-        // 2. Possibly start the next timer in the cycle
-        // 3. Send any missed notifications
+        // Post completion notification
+        DispatchQueue.main.async {
+            switch timerData.type {
+            case .wash:
+                NotificationCenter.default.post(
+                    name: TimerService.washCycleCompletedNotification,
+                    object: nil,
+                    userInfo: ["petID": timerData.petID]
+                )
+            case .dry:
+                NotificationCenter.default.post(
+                    name: TimerService.dryCycleCompletedNotification,
+                    object: nil,
+                    userInfo: ["petID": timerData.petID]
+                )
+            }
+        }
         
-        print("🔄 Cleaned up expired timer for pet: \(timerData.petID)")
+        print("🔄 Posted completion notification for expired timer: \(timerData.petID)")
     }
     
     private func recreateTimer(_ timerData: TimerData, remainingTime: TimeInterval) {
         let timer = Timer.scheduledTimer(withTimeInterval: remainingTime, repeats: false) { [weak self] _ in
             switch timerData.type {
             case .wash:
-                // Need pet reference - this is a limitation of current architecture
-                print("Wash timer completed for pet: \(timerData.petID)")
+                self?.washCycleCompleted(petID: timerData.petID)
             case .dry:
-                print("Dry timer completed for pet: \(timerData.petID)")
+                self?.dryCycleCompleted(petID: timerData.petID)
             }
-            
-            self?.activeTimers.removeValue(forKey: timerData.petID)
-            self?.removeTimerData(for: timerData.petID)
         }
         
         activeTimers[timerData.petID] = timer
-    }
-}
-
-// MARK: - Helper Extensions
-
-extension TimerService {
-    
-    /// Get progress percentage for pet's active timer (0.0 to 1.0)
-    func getTimerProgress(for pet: LaundryPet) -> Double? {
-        guard let timerData = getTimerData(for: pet.id) else { return nil }
-        
-        let totalDuration = timerData.endTime.timeIntervalSince(timerData.startTime)
-        let elapsed = Date().timeIntervalSince(timerData.startTime)
-        
-        return min(1.0, max(0.0, elapsed / totalDuration))
-    }
-    
-    /// Get timer start time for display
-    func getTimerStartTime(for pet: LaundryPet) -> Date? {
-        return getTimerData(for: pet.id)?.startTime
-    }
-    func formatRemainingTime(_ timeInterval: TimeInterval) -> String {
-        let minutes = Int(timeInterval / 60)
-        let seconds = Int(timeInterval.truncatingRemainder(dividingBy: 60))
-        
-        if minutes > 60 {
-            let hours = minutes / 60
-            let remainingMinutes = minutes % 60
-            return String(format: "%d:%02d:%02d", hours, remainingMinutes, seconds)
-        } else {
-            return String(format: "%d:%02d", minutes, seconds)
-        }
-    }
-    
-    /// Get timer type for display
-    func getTimerType(for pet: LaundryPet) -> String? {
-        guard let timerData = getTimerData(for: pet.id) else { return nil }
-        
-        switch timerData.type {
-        case .wash: return "Washing"
-        case .dry: return "Drying"
-        }
+        print("🔄 Recreated timer for \(timerData.petID) with \(Int(remainingTime)) seconds remaining")
     }
 }

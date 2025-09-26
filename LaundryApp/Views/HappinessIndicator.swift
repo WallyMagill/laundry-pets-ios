@@ -49,6 +49,10 @@ struct HappinessIndicator: View {
         .onChange(of: pet.currentState) { _, _ in
             updateHeartCount()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .petUpdateRequired)) { _ in
+            // Update hearts when centralized timer fires
+            updateHeartCount()
+        }
     }
     
     /**
@@ -134,14 +138,13 @@ struct HappinessIndicator: View {
      * START HEART ANIMATION
      *
      * Creates pulsing animation for recovery states
+     * Uses centralized timer system instead of individual timer
      */
     private func startHeartAnimation() {
         animationAmount = 1.2
         
-        // Update hearts periodically to reflect time-based changes
-        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
-            updateHeartCount()
-        }
+        // Use centralized timer system instead of individual timer
+        // Hearts will update when PetTimerManager posts petUpdateRequired notification
     }
 }
 
